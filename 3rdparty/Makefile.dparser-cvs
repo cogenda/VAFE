@@ -1,0 +1,14 @@
+PREFIX := $(PWD)
+PATH := $(PWD)/bin:$(PATH)
+
+DPARSER_DIR := d
+DPARSER_URL := :pserver:anonymous@dparser.cvs.sourceforge.net:/cvsroot/dparser
+
+$(PREFIX)/bin/make-dparser $(PREFIX)/lib/libdparse.a: src/$(DPARSER_DIR)
+	( cd $< && $(MAKE) D_DEBUG=1 D_OPTIMIZE=0 && make PREFIX=$(PREFIX) install )
+	ranlib $(PREFIX)/lib/libdparse.a
+
+src/$(DPARSER_DIR):
+	( mkdir -p src && cd src && cvs -z3 -d $(DPARSER_URL) co d )
+	-( cd src && cat ../$(notdir $(basename $(basename $(DPARSER_DIR))))*patch.diff | patch -p0 )
+
