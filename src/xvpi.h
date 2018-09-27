@@ -164,7 +164,17 @@ extern struct xvpi_object * xvpi_object_get_child (struct xvpi_object *obj, PLI_
 
 extern struct xvpi_object * xvpi_object_get_child_or_create (struct xvpi_object *obj, PLI_INT32 name, PLI_INT32 type);
 
+#ifdef __cplusplus
+extern "C" {
+void * xvpi_get_pointer (int prop, vpiHandle obj);
+extern const struct enum_description vpi_object_types [];
+extern unsigned sizeof_vpi_object_types;
+extern const struct enum_description vpi_property_types [];
+extern unsigned sizeof_vpi_property_types;
+}
+#else
 extern void * xvpi_get_pointer (int prop, vpiHandle obj);
+#endif
 
 
 /******** misc helper functions and macros **********/
@@ -229,6 +239,12 @@ extern void * xvpi_get_pointer (int prop, vpiHandle obj);
 	}
 	#endif
 #endif
+
+#define INDENT_WIDTH 4
+struct enum_description {
+	PLI_INT32 name;
+	const char *string;
+};
 
 #endif
 

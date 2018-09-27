@@ -1,5 +1,6 @@
 #include "xvpi.h"
 #include "xvpi_elaborate.h"
+#include "xyce_vacomp.h"
 
 static int clear_toplevel_module_property (PLI_BYTE8 *module_name)
 {
@@ -55,12 +56,29 @@ int xvpi_recurs_elabrate(D_ParseNode *pn, const char *key)
 
 }
 #endif
+//C++ code generate from the vpi-obj root based on Xyce model convention
+//Firstly resolving macro and analog function
+//then model parameter processing
+//The geometry/temperature scaling
+//Evaluation code with special handling I/Q stamping
+//Finalized processing
+//Attention: other VA code -> C trans tips:
+//begin ... end block
+//switch-case block
+void cpp_generate_from_vpi(vpiHandle root)
+{
+  CgenHeader(root);
+  CgenImplement(root);
+}
 
 int xvpi_elaborate (void)
 {
 	int err;
-        const int max_depth=1000;
-        test_dump_vpi_obj(max_depth, (void *)(&(xvpi.root_object)));
+#if 1
+        cpp_generate_from_vpi((vpiHandle)&(xvpi.root_object));
+#else
+        test_dump_vpi_obj(1000, (void *)(&(xvpi.root_object)));
+#endif
 	if ((err = identify_and_tag_toplevel_modules()) != 0)
 		return err;
 	return 0;

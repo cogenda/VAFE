@@ -1,3 +1,4 @@
+#include "xyce_vacomp.h"
 #include <stdlib.h>
 #include <vpi_user.h>
 
@@ -6,15 +7,7 @@
 #endif
 
 
-#define INDENT_WIDTH 4
-
-static int vpi_object_dump (vpiHandle obj, vpiHandle scope [], int level_max, int level)
-{
-	struct enum_description {
-		PLI_INT32 name;
-		char *string;
-	};
-	static const struct enum_description vpi_object_types [] = {
+const struct enum_description vpi_object_types [] = {
 		/* 1364-1995 */
 		/****************************** OBJECT TYPES ******************************/
 		{ vpiAlways, "vpiAlways" },
@@ -224,8 +217,8 @@ static int vpi_object_dump (vpiHandle obj, vpiHandle scope [], int level_max, in
 		{ xvpiApplication, "xvpiApplication" },
 		{ xvpiDimension, "xvpiDimension" },
 #endif
-	};
-	static const struct enum_description vpi_property_types [] = {
+};
+const struct enum_description vpi_property_types [] = {
 		/******************************* PROPERTIES *******************************/
 		/************************ generic object properties ***********************/
 		{ vpiUndefined, "vpiUndefined" },
@@ -386,7 +379,12 @@ static int vpi_object_dump (vpiHandle obj, vpiHandle scope [], int level_max, in
 		{ xvpiCbData, "xvpiCbData" },
 		{ xvpiSysTfData, "xvpiSysTfData" },
 #endif
-	};
+};
+unsigned sizeof_vpi_object_types=sizeof(vpi_object_types)/sizeof(vpi_object_types[0]);
+unsigned sizeof_vpi_property_types=sizeof(vpi_object_types)/sizeof(vpi_object_types[0]);
+
+static int vpi_object_dump (vpiHandle obj, vpiHandle scope [], int level_max, int level)
+{
 	int i;
 
 	if (level >= level_max) {
@@ -395,7 +393,6 @@ static int vpi_object_dump (vpiHandle obj, vpiHandle scope [], int level_max, in
 	}
 
 	scope[level] = obj;
-
 	if (obj) {
 		/* try to dump properties of object */
 		for (i=0; i<sizeof(vpi_property_types)/sizeof(vpi_property_types[0]); i++) {
@@ -519,6 +516,13 @@ void test_dump_vpi_obj(const int max_depth, void *root)
 {
         vpiHandle scope [max_depth];
 	vpi_printf("---------- VPI object dump For debugging -----------\n");
+#if 1
 	vpi_object_dump((vpiHandle)root, scope, max_depth, 0);
+#else
+        PLI_INT32 vpiObj=vpiModule;
+        vpiHandle topHandle = vpi_iterator_by_index(root, vpiObj);
+        //vpiHandle topHandle = vpi_iterate(vpiObj, root);
+	vpi_object_get_property(topHandle);
+#endif
 	vpi_printf("--------------------- end of VPI object dump ---------------------\n");
 }

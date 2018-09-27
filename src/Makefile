@@ -1,5 +1,7 @@
 CC := gcc
+CXX := g++
 CFLAGS := -MD -g -O0 -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
+CXXFLAGS := -MD -g -O0 -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c++11
 LDFLAGS := -MD -g -O0 -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
@@ -8,11 +10,11 @@ EXE:=vams.exe
 all : $(EXE)
 
 release: $(EXE)
-	@mkdir -p ../bin && cp $(EXE) ../bin/
+	@mkdir -p ../bin && cp -f $(EXE) ../bin/
 
-$(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o ../3rdparty/lib/libdparse.a
+$(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o  xyce_vacomp.o ../3rdparty/lib/libdparse.a
 	@echo "LINK: $@"
-	@$(CC) $(LDFLAGS) -o $@ $^
+	@$(CXX) $(LDFLAGS) -o $@ $^
 
 # Do not remove generated sources automatically in each build.
 .SECONDARY : $($(wildcard *.l):.l=.c) $($(wildcard *.g):.g=.c) $($(wildcard *.gperf):.gperf=.h)  $($(wildcard *.gperf):.gperf=.c)
@@ -32,6 +34,10 @@ vams_parse.c : vams_keyword_lookup.h
 %.o : %.c ../3rdparty/include/dparse.h
 	@echo "COMPILE: $@"
 	@$(CC) $(CFLAGS) -c $< -o $@
+
+%.o : %.cc
+	@echo "COMPILE C++: $@"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 ../3rdparty/include/dparse.h ../3rdparty/lib/libdparse.a : ../3rdparty/bin/make_dparser
 ../3rdparty/bin/make_dparser :
