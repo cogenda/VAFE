@@ -37,6 +37,7 @@ map < string, string > va_c_expr_map = {
   {"$vt",    "_VT_"},
   {"$limit", "_LIMIT_"},
   {"$temperature", "_TEMPER_"},
+  {"$strobe", "_STROBE_"},
 };
 
 typedef enum _objSelection {
@@ -173,6 +174,16 @@ template <typename T, typename Key>
 bool key_exists(T& container, Key& key)
 {
     return (container.find(key) != std::end(container));
+}
+
+//To check if a string `src stars with `targ
+bool
+str_startswith(string src, string targ)
+{
+if(src.substr(0, targ.size()) == targ)
+  return true;
+else
+  return false;
 }
 
 //split a string into a vector by token1 and token2
@@ -389,6 +400,80 @@ resolve_block_for(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
   }
 }
 
+//For case statement as below:
+//case (test)
+// expr-i: <block-i>
+// default: <blockn>
+//endcase
+void
+resolve_block_case(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
+{
+  /* case strunct in vams AST
+  obj  vpiCondition
+  itr  vpiCaseItem[n] size=n
+    obj CaseItem[i]
+      itr  vpiExpr 
+        obj  vpiExpr[n]
+      obj  vpiStmt
+    */
+  string strCond="";
+  string _tmpStr = "";
+  vpiHandle objCond = vpi_handle(vpiCondition, obj);
+  strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
+  retStr += "switch(" + strCond + "){\n";
+  retStr.insert(0, g_indent_width, ' ');
+
+  vpiHandle iterator = vpi_iterate (vpiCaseItem, obj);
+  vpiHandle scan_handle, scan_expr;
+  int idx=0, size = vpi_get (vpiSize, iterator);
+  int cnt = 1, _obj_type;
+  for(idx=0; idx < size; idx++)
+  {
+    if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+    {
+      _obj_type = (int) vpi_get (vpiType, scan_handle);
+      if(_obj_type == vpiCaseItem)
+      {
+        //handle Expr at expr-i:<expr-i block>
+        int cnt1=1;
+        vpiHandle itr_expr = vpi_iterate (vpiExpr,scan_handle);
+        int size1 = vpi_get (vpiSize, itr_expr);
+        cout << "**dbg size1=" << size1 << endl;
+        for(int idx=0; idx < size1; idx++)
+        {
+          if((scan_expr = vpi_scan_index (itr_expr, cnt1++)) != NULL)
+          {
+            _tmpStr = "case " + vpi_resolve_expr_impl (scan_expr, vaSpecialItems) + ":\n";
+            _tmpStr.insert(0, g_indent_width, ' ');
+            retStr += _tmpStr;
+          }
+        }
+        vpiHandle objCaseBlock = vpi_handle(vpiStmt, scan_handle);
+        string strline = (char *) vpi_get_str (vpiDecompile, scan_handle);
+        if(str_startswith(strline, "default"))
+          //here goes to default block
+        {
+          assert(size1 <= 0);
+          _tmpStr = "default:\n";
+          _tmpStr.insert(0, g_indent_width, ' ');
+          retStr += _tmpStr;
+        }
+        if(objCaseBlock)
+        {
+          g_indent_width += INDENT_UNIT;
+          _tmpStr = vpi_resolve_expr_impl (objCaseBlock, vaSpecialItems);
+          _tmpStr += string("break;\n").insert(0, g_indent_width, ' ');
+          retStr += _tmpStr;
+          g_indent_width -= INDENT_UNIT;
+        }
+      }
+    }
+  }
+  _tmpStr = "}\n";
+  _tmpStr.insert(0, g_indent_width, ' ');
+  retStr += _tmpStr;
+}
+
 void 
 resolve_block_ifelse(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -468,6 +553,12 @@ resolve_block_anyFunCall(vpiHandle obj, string& retStr, vaElement& vaSpecialItem
       else
         retStr += ")";
     }
+  }
+  //special handling for $strobe() etc calling
+  if(vpiAnalogSysTaskCall == vpi_get (vpiType, obj))
+  {
+    retStr += ";";
+    retStr.insert(0, g_indent_width, ' ');
   }
 }
 
@@ -557,7 +648,9 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           }
           else if(cur_obj_type == vpiAnalogBuiltinFuncCall 
                || cur_obj_type == vpiAnalogFuncCall
-               || cur_obj_type == vpiSysFuncCall)
+               || cur_obj_type == vpiSysFuncCall
+               || cur_obj_type == vpiAnalogSysTaskCall
+               || cur_obj_type == vpiAnalogSysFuncCall)
           {
             resolve_block_anyFunCall(obj, _retStr, vaSpecialItems);
           }
@@ -626,7 +719,8 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           }
           else if(cur_obj_type == vpiCase)
           {
-            cout << "**dbg vpiCase here.." << endl;
+            //handle Case stmt ...
+            resolve_block_case(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiCondition)
           {
