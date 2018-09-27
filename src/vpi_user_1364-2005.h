@@ -733,6 +733,9 @@ XXTERN vpiHandle vpi_handle_by_name PROTO_PARAMS((PLI_BYTE8 * name,
 XXTERN vpiHandle vpi_handle_by_index PROTO_PARAMS((vpiHandle object,
 						   PLI_INT32 indx));
 
+XXTERN int vpi_object_has_childs PROTO_PARAMS((vpiHandle object));
+XXTERN int vpi_object_has_iterator PROTO_PARAMS((vpiHandle object));
+
 /* for traversing relationships */
 XXTERN vpiHandle vpi_handle PROTO_PARAMS((PLI_INT32 type,
 					  vpiHandle refHandle));
@@ -741,11 +744,13 @@ XXTERN vpiHandle vpi_handle_multi PROTO_PARAMS((PLI_INT32 type,
 						vpiHandle refHandle1,
 						vpiHandle refHandle2,
 						...));
+XXTERN vpiHandle vpi_iterator_by_index PROTO_PARAMS((vpiHandle object, PLI_INT32 indx));
 
 XXTERN vpiHandle vpi_iterate PROTO_PARAMS((PLI_INT32 type,
 					   vpiHandle refHandle));
 
 XXTERN vpiHandle vpi_scan PROTO_PARAMS((vpiHandle iterator));
+XXTERN vpiHandle vpi_scan_index PROTO_PARAMS((vpiHandle iterator, int index));
 
 /* for processing properties */
 XXTERN PLI_INT32 vpi_get PROTO_PARAMS((PLI_INT32 property,
@@ -782,9 +787,9 @@ XXTERN PLI_UINT32 vpi_mcd_close PROTO_PARAMS((PLI_UINT32 mcd));
 XXTERN PLI_BYTE8 *vpi_mcd_name PROTO_PARAMS((PLI_UINT32 cd));
 
 XXTERN PLI_INT32 vpi_mcd_printf PROTO_PARAMS((PLI_UINT32 mcd,
-					      PLI_BYTE8 * format, ...));
+					      const PLI_BYTE8 * format, ...));
 
-XXTERN PLI_INT32 vpi_printf PROTO_PARAMS((PLI_BYTE8 * format, ...));
+XXTERN PLI_INT32 vpi_printf PROTO_PARAMS((const PLI_BYTE8 * format, ...));
 
 /* utility routines */
 XXTERN PLI_INT32 vpi_compare_objects PROTO_PARAMS((vpiHandle object1,
@@ -814,7 +819,7 @@ XXTERN PLI_INT32 vpi_vprintf PROTO_PARAMS((PLI_BYTE8 * format,
 					va_list ap));
 
 XXTERN PLI_INT32 vpi_mcd_vprintf PROTO_PARAMS((PLI_UINT32 mcd,
-					       PLI_BYTE8 * format,
+					       const PLI_BYTE8 * format,
 					       va_list ap));
 
 XXTERN PLI_INT32 vpi_flush PROTO_PARAMS((void));

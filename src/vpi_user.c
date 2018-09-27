@@ -125,6 +125,33 @@ vpiHandle vpi_handle_by_index (vpiHandle object, PLI_INT32 indx)
 	return 0;
 }
 
+vpiHandle vpi_iterator_by_index (vpiHandle object, PLI_INT32 indx)
+{
+	struct xvpi_object *obj = (object == NULL) ? &xvpi.root_object : (struct xvpi_object *)object;
+        struct xvpi_object *ret;
+        int i;
+        for(i=0; i<obj->u.object.n_childs; i++) {
+          ret = obj->u.object.childs[i];
+          if (ret->type == vpiIterator && ret->name == indx) 
+            return (vpiHandle)ret;
+        }
+	return 0;
+}
+          
+int vpi_object_has_childs(vpiHandle object)
+{
+  struct xvpi_object *obj = (object == NULL) ? &xvpi.root_object : (struct xvpi_object *)object;
+  return xvpi_object_has_childs(obj);
+}
+
+int vpi_object_has_iterator(vpiHandle object)
+{
+  struct xvpi_object *obj = (object == NULL) ? &xvpi.root_object : (struct xvpi_object *)object;
+  if (obj->type == vpiIterator)
+    return 1;
+  else
+    return 0;
+}
 
 /* for traversing relationships */
 vpiHandle vpi_handle (PLI_INT32 name, vpiHandle refHandle)
@@ -182,6 +209,8 @@ vpiHandle vpi_scan (vpiHandle iterator)
 	struct xvpi_object *i = (struct xvpi_object *) iterator;
 	struct xvpi_object *o;
 
+        if (i->u.object.n_childs == 0)
+                return NULL;
 	o = i->u.object.childs[i->u.object.n_childs-1];
 
 	if (o->name == vpiIteratorType || o->name == vpiUse) {
@@ -194,6 +223,25 @@ vpiHandle vpi_scan (vpiHandle iterator)
 	return (vpiHandle) o;
 }
 
+vpiHandle vpi_scan_index (vpiHandle iterator, int offset)
+{       //iterate child which is the non-distory version of vpi_scan
+        //offset should be from 1,2,3...i->u.object.n_childs
+	struct xvpi_object *i = (struct xvpi_object *) iterator;
+	struct xvpi_object *o;
+
+        if (i->u.object.n_childs < offset)
+                return NULL;
+	o = i->u.object.childs[i->u.object.n_childs-offset];
+
+	if (o->name == vpiIteratorType || o->name == vpiUse) {
+		//xvpi_object_unref(i);
+		return NULL;
+	}
+
+	//i->u.object.n_childs--;
+	//xvpi_object_unref(o);
+	return (vpiHandle) o;
+}
 
 /* for processing properties */
 PLI_INT32 vpi_get (PLI_INT32 property, vpiHandle object)
@@ -363,7 +411,7 @@ PLI_BYTE8 *vpi_mcd_name (PLI_UINT32 cd)
 }
 
 
-PLI_INT32 vpi_mcd_printf (PLI_UINT32 mcd, PLI_BYTE8 * format, ...)
+PLI_INT32 vpi_mcd_printf (PLI_UINT32 mcd, const PLI_BYTE8 * format, ...)
 {
 	PLI_UINT32 retval;
 	va_list ap;
@@ -374,7 +422,7 @@ PLI_INT32 vpi_mcd_printf (PLI_UINT32 mcd, PLI_BYTE8 * format, ...)
 }
 
 
-PLI_INT32 vpi_printf (PLI_BYTE8 * format, ...)
+PLI_INT32 vpi_printf (const PLI_BYTE8 * format, ...)
 {
 	PLI_INT32 retval;
 	va_list ap;
@@ -468,7 +516,7 @@ PLI_INT32 vpi_vprintf (PLI_BYTE8 * format, va_list ap)
 }
 
 
-PLI_INT32 vpi_mcd_vprintf (PLI_UINT32 mcd, PLI_BYTE8 * format, va_list ap)
+PLI_INT32 vpi_mcd_vprintf (PLI_UINT32 mcd, const PLI_BYTE8 * format, va_list ap)
 {
 	PLI_UINT32 retval = 0;
 	unsigned i;
