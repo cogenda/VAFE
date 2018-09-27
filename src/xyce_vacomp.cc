@@ -16,6 +16,8 @@ bool verbose = true;
 //bool verbose = false;
 static int g_indent_width=0;
 static int INDENT_UNIT=2;
+static int g_incr_idx=0;
+const string g_loopIncVar="__loop_incr_var";
 
 
 map < int, string > va_c_type_map = {
@@ -288,6 +290,7 @@ typedef struct _vaElement {
 string
 vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems);
 
+//For begin ... end block
 void 
 resolve_block_begin(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -309,6 +312,83 @@ resolve_block_begin(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
   retStr += string("}\n").insert(0, g_indent_width, ' ');
 }
 
+//For while(expr) begin ... end block
+void
+resolve_block_while(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
+{
+  string strCond="";
+  vpiHandle objCond = vpi_handle(vpiCondition, obj);
+  strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
+  retStr += string("while(").insert(0, g_indent_width, ' ');
+  retStr += strCond;
+  retStr += ")\n";
+  vpiHandle objWhile_body = vpi_handle(vpiStmt, obj);
+  if(objWhile_body)
+  {
+    //retStr += "\n";
+    g_indent_width += INDENT_UNIT;
+    retStr += vpi_resolve_expr_impl (objWhile_body, vaSpecialItems);
+    g_indent_width -= INDENT_UNIT;
+    //retStr += "\n";
+  }
+}
+
+//For repeat(expr) block where translates it to while(expr) in C
+void
+resolve_block_repeat(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
+{
+  string strCond="", incVar=g_loopIncVar, _strtmp;
+  vpiHandle objCond = vpi_handle(vpiCondition, obj);
+  strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
+  incVar += to_string(g_incr_idx++);
+  _strtmp = "int " + incVar + "=" + strCond + ";\n";
+  _strtmp.insert(0, g_indent_width, ' ');
+  retStr += _strtmp;
+  _strtmp = "while(" + incVar + "--)\n";
+  _strtmp.insert(0, g_indent_width, ' ');
+  retStr += _strtmp;
+  vpiHandle objWhile_body = vpi_handle(vpiStmt, obj);
+  if(objWhile_body)
+  {
+    //retStr += "\n";
+    g_indent_width += INDENT_UNIT;
+    retStr += vpi_resolve_expr_impl (objWhile_body, vaSpecialItems);
+    g_indent_width -= INDENT_UNIT;
+    //retStr += "\n";
+  }
+}
+
+//For for-loop block
+void
+resolve_block_for(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
+{
+  string strCond, strIncr, strInit;
+  int _indent_bak = g_indent_width;
+  g_indent_width = 0;
+  vpiHandle objCond = vpi_handle(vpiCondition, obj);
+  strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
+  vpiHandle objIncr = vpi_handle(vpiForIncStmt, obj);
+  strIncr = vpi_resolve_expr_impl(objIncr, vaSpecialItems);
+  //remove the tail ';'
+  if(strIncr[strIncr.size()-1] == ';')
+    strIncr.erase(strIncr.size()-1, 1); 
+
+  vpiHandle objInit = vpi_handle(vpiForInitStmt, obj); 
+  strInit = vpi_resolve_expr_impl(objInit, vaSpecialItems);
+  g_indent_width = _indent_bak;
+  retStr += "for(" + strInit + strCond + ";" + strIncr + ")";
+  retStr += "\n";
+  retStr.insert(0, g_indent_width, ' ');
+
+  vpiHandle objBody = vpi_handle(vpiStmt, obj);
+  if(objBody)
+  {
+    g_indent_width += INDENT_UNIT;
+    retStr += vpi_resolve_expr_impl (objBody, vaSpecialItems);
+    g_indent_width -= INDENT_UNIT;
+  }
+}
+
 void 
 resolve_block_ifelse(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -326,15 +406,15 @@ resolve_block_ifelse(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
     retStr += string("if(").insert(0, g_indent_width, ' ');
   }
   retStr += strCond;
-  retStr += ")";
+  retStr += ")\n";
   vpiHandle objIf_body = vpi_handle(vpiStmt, obj);
   if(objIf_body)
   {
-    retStr += "\n";
+    //retStr += "\n";
     g_indent_width += INDENT_UNIT;
     retStr += vpi_resolve_expr_impl (objIf_body, vaSpecialItems);
     g_indent_width -= INDENT_UNIT;
-    retStr += "\n";
+    //retStr += "\n";
   }
 
   vpiHandle objCondElseIf = vpi_handle(vpiElseStmt, obj);
@@ -391,6 +471,7 @@ resolve_block_anyFunCall(vpiHandle obj, string& retStr, vaElement& vaSpecialItem
   }
 }
 
+//For any binary OP, TODO more OPs, Ternary OP: c? a:b
 void 
 resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -406,7 +487,6 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
     {
       retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
       if(idx != size-1) {
-        //TODO more OPs
         if(opType == vpiAddOp)
           retStr += "+";
         else if(opType == vpiSubOp)
@@ -429,6 +509,7 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
   retStr += ")";  
 }
 
+//For assignment statment lhs=rhs
 void 
 resolve_block_assign(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -444,14 +525,15 @@ resolve_block_assign(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
   retStr.insert(0, g_indent_width, ' ');
 }
 
+//For analog I/V contribtion expression x<+...
 void 
 resolve_block_contrib(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
-  //TODO handle <+ ...
-  cout << "**dbg vpiContrib here.." << endl;
+  //TODO
   retStr.insert(0, g_indent_width, ' ');
 }
 
+//Main C code generation for VA statements
 string
 vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
 {
@@ -462,7 +544,6 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
       if(cur_obj_type != vpiModule && cur_obj_type != vpiAnalogFunction)
       {
         string strline = (char *) vpi_get_str (vpiDecompile, obj);
-        _retStr = strline;
 	if (strline.size()) 
         {
           assert(cur_obj_type != vpiIterator);
@@ -525,32 +606,31 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == vpiContrib)
           {
             //TODO handle <+ ...
+            _retStr = strline;
             resolve_block_contrib(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiRepeat)
           {
-            //TODO handle repeat-loop ...
-            cout << "**dbg vpiRepeat here.." << endl;
+            //handle repeat-loop ...
+            resolve_block_repeat(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiWhile)
           {
-            //TODO handle while-loop ...
-            cout << "**dbg vpiWhile here.." << endl;
+            //handle while-loop ...
+            resolve_block_while(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiFor)
           {
-            //TODO handle For-loop ...
-            cout << "**dbg vpiFor here.." << endl;
+            //handle For-loop ...
+            resolve_block_for(obj, _retStr, vaSpecialItems);
           }
-
-          else if(cur_obj_type == vpiCondition)
-          {
-            cout << "**dbg vpiCondition here.." << endl;
-          }
-
           else if(cur_obj_type == vpiCase)
           {
             cout << "**dbg vpiCase here.." << endl;
+          }
+          else if(cur_obj_type == vpiCondition)
+          {
+            cout << "**dbg vpiCondition here.." << endl;
           }
 
 	  if (verbose)
@@ -629,6 +709,7 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, map<T1,T2>& contain
   }  
 }
 
+//Main procedure for VA module to C code generation
 int
 vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
 {
