@@ -222,6 +222,19 @@ static void pop_input_file (struct scanner_extra *e)
 	}
 }
 
+static char* insert_string(char* src, int pos, char* seed)
+{
+    char * strC, *destination=src;
+    strC = (char*)malloc(strlen(destination)+strlen(seed)+1);
+    strncpy(strC,destination,pos);
+    strC[pos] = '\0';
+    strcat(strC,seed);
+    strcat(strC,destination+pos);
+    strcpy(destination,strC);
+    free(strC);
+    return destination;
+}
+
 static void strip_backslash_line_continuation (char *s)
 {
 	char *src = s;
@@ -586,6 +599,15 @@ IDENTIFIER		({SIMPLE_IDENTIFIER}|{ESCAPED_IDENTIFIER})
 			strip_backslash_line_continuation(s);
 			def_add(e, s);
 		}
+		emit_newline(e);
+	}
+
+	"&&"([^&](\\\r?\n)?)*+\n {
+		struct scanner_extra *e = yyget_extra(yyscanner);
+		char *s;
+                /*hack:change && to ## to avoid mistake of handling OP &(vpiBitAndOp) and &&(vpiLogAndOp) */
+		s = insert_string(yytext, 2, "##");
+		strip_backslash_line_continuation(s);
 		emit_newline(e);
 	}
 

@@ -692,6 +692,9 @@
 	static struct xvpi_object * parsenode_to_task_or_function_f (struct D_ParseNode *pn, PLI_INT32 type, const char *type_string)
 	{
 		struct xvpi_object *obj = parsenode_xvpi_object_new_f(pn, type, type, type_string);
+                //add here to get the analogfunction name stored as `vpiName'
+		xvpi_object_add_child(obj, parsenode_to_xvpi_object_string_f(d_get_child(pn, 2), vpiFuncType));                
+		xvpi_object_add_child(obj, parsenode_to_xvpi_object_string_f(d_get_child(pn, 3), vpiName));                
 		xvpi_object_add_child(obj, xvpi_object_new(vpiIODecl, vpiIterator));
 		parsenode_attach_childs_to_xvpi_object_f(pn, obj);
 		return obj;
@@ -3189,7 +3192,7 @@ binary_operator
 	| '^~'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXnorOp); }
 	| '~^'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXNorOp); }
 	| '|'   $binary_op_left 3									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitOrOp); }
-	| '&&'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
+	| '##'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
 	| '||'  $binary_op_left 1									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogOrOp); }
 	;
 
@@ -3213,7 +3216,7 @@ binary_module_path_operator
 	| '^~'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXnorOp); }
 	| '~^'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXNorOp); }
 	| '|'   $binary_op_left 3									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitOrOp); }
-	| '&&'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
+	| '##'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
 	| '||'  $binary_op_left 1									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogOrOp); }
 	;
 
