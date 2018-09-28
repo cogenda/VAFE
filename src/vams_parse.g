@@ -2004,7 +2004,7 @@ genvar_expression
 	: genvar_primary
 	| unary_operator ( attribute_instance )* genvar_primary						{ $$ = parsenode_to_operation($n, vpiUndefined); }
 	| genvar_expression binary_operator ( attribute_instance )* genvar_expression			{ $$ = parsenode_to_operation($n, vpiUndefined); }
-	| genvar_expression '?' ( attribute_instance )* genvar_expression ':' genvar_expression		{ $$ = parsenode_to_operation($n, vpiConditionOp); }
+	| genvar_expression '?' ( attribute_instance )* genvar_expression ':' genvar_expression	 $binary_op_left 1 { $$ = parsenode_to_operation($n, vpiConditionOp); }
 	;
 
 genvar_iteration
@@ -2945,7 +2945,7 @@ abstol_expression
 	;
 
 analog_conditional_expression
-	: analog_expression '?' ( attribute_instance )* analog_expression ':' analog_expression		{ $$ = parsenode_to_operation($n, vpiConditionOp); }
+	: analog_expression '?' ( attribute_instance )* analog_expression ':' analog_expression	 $binary_op_left 1  { $$ = parsenode_to_operation($n, vpiConditionOp); }
 	;
 
 analog_range_expression
@@ -2970,7 +2970,7 @@ base_expression
 	;
 
 conditional_expression
-	: expression1 '?' ( attribute_instance )* expression2 ':' expression3				{ $$ = parsenode_to_operation($n, vpiConditionOp); }
+	: expression1 '?' ( attribute_instance )* expression2 ':' expression3	 $binary_op_left 1 			{ $$ = parsenode_to_operation($n, vpiConditionOp); }
 	;
 
 constant_base_expression
@@ -2985,7 +2985,7 @@ constant_expression
 	: constant_primary
 	| unary_operator ( attribute_instance )* constant_primary					{ $$ = parsenode_to_operation($n, vpiUndefined); }
 	| constant_expression binary_operator ( attribute_instance )* constant_expression		{ $$ = parsenode_to_operation($n, vpiUndefined); }
-	| constant_expression '?' ( attribute_instance )* constant_expression ':' constant_expression	{ $$ = parsenode_to_operation($n, vpiConditionOp); }
+	| constant_expression '?' ( attribute_instance )* constant_expression ':' constant_expression	 $binary_op_left 1 { $$ = parsenode_to_operation($n, vpiConditionOp); }
 	;
 
 constant_mintypmax_expression
@@ -3036,7 +3036,7 @@ mintypmax_expression
 	;
 
 module_path_conditional_expression
-	: module_path_expression '?' ( attribute_instance )* module_path_expression ':' module_path_expression
+	: module_path_expression '?' ( attribute_instance )* module_path_expression ':' module_path_expression $binary_op_left 1 
 													{ $$ = parsenode_to_operation($n, vpiConditionOp); }
 	;
 
