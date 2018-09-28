@@ -586,14 +586,31 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
           retStr += "/";
         else if(opType == vpiMultOp)
           retStr += "*";
+        else if(opType == vpiModOp)
+          retStr += "%";
         else if(opType == vpiGtOp)
           retStr += " > ";
+        else if(opType == vpiGeOp)
+          retStr += " >= ";
         else if(opType == vpiLtOp)
           retStr += " < ";
+        else if(opType == vpiLeOp)
+          retStr += " <= ";
         else if(opType == vpiLogAndOp)
           retStr += " && ";
-        else if(opType == vpiLogOrOp)
+        else if(opType == vpiLogOrOp || opType == vpiBitOrOp)
           retStr += " || ";
+        else if(opType == vpiEqOp)
+          retStr += " == ";
+        else if(opType == vpiNeqOp)
+          retStr += " != ";
+        else if(opType == vpiConditionOp)
+        {
+          if(idx == 0)
+            retStr += " ? ";
+          else if(idx == 1)
+            retStr += " : ";
+        }
       }
     }             
   }
