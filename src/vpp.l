@@ -222,16 +222,17 @@ static void pop_input_file (struct scanner_extra *e)
 	}
 }
 
-static char* insert_string(char* src, int pos, char* seed)
+/* replace the char from pos with given str `seed'*/
+static char* replace_string(char* src, int pos, char* seed)
 {
-    char * strC, *destination=src;
-    strC = (char*)malloc(strlen(destination)+strlen(seed)+1);
-    strncpy(strC,destination,pos);
-    strC[pos] = '\0';
-    strcat(strC,seed);
-    strcat(strC,destination+pos);
-    strcpy(destination,strC);
-    free(strC);
+    char *destination=src;
+    int idx=0;
+    assert(pos < strlen(src));
+    while(idx < strlen(seed))
+    {
+      destination[pos+idx] = seed[idx];
+      idx++;
+    }
     return destination;
 }
 
@@ -606,9 +607,9 @@ IDENTIFIER		({SIMPLE_IDENTIFIER}|{ESCAPED_IDENTIFIER})
 		struct scanner_extra *e = yyget_extra(yyscanner);
 		char *s;
                 /*hack:change && to ## to avoid mistake of handling OP &(vpiBitAndOp) and &&(vpiLogAndOp) */
-		s = insert_string(yytext, 2, "##");
+		s = replace_string(yytext, 0, "##");
 		strip_backslash_line_continuation(s);
-		emit_newline(e);
+		emit(e, yytext);
 	}
 
 	"`undef"[ \t]+[^ \t\n]+ {
