@@ -29,7 +29,7 @@ vams_parse.c : vams_keyword_lookup.h
 
 %.c : %.g ../3rdparty/bin/make_dparser
 	@echo "GENERATE: $@"
-	@../3rdparty/bin/make_dparser -v $< -o $@
+	@../3rdparty/bin/make_dparser -l -v $< -o $@
 
 %.o : %.c ../3rdparty/include/dparse.h
 	@echo "COMPILE: $@"

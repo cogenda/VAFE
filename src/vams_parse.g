@@ -3192,7 +3192,7 @@ binary_operator
 	| '^~'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXnorOp); }
 	| '~^'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXNorOp); }
 	| '|'   $binary_op_left 3									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitOrOp); }
-	| '##'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
+	| '&&'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
 	| '||'  $binary_op_left 1									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogOrOp); }
 	;
 
@@ -3216,7 +3216,7 @@ binary_module_path_operator
 	| '^~'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXnorOp); }
 	| '~^'  $binary_op_left 4									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitXNorOp); }
 	| '|'   $binary_op_left 3									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiBitOrOp); }
-	| '##'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
+	| '&&'  $binary_op_left 2									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogAndOp); }
 	| '||'  $binary_op_left 1									{ $$ = xvpi_object_new(vpiOpType, xvpiIntProp, vpiLogOrOp); }
 	;
 

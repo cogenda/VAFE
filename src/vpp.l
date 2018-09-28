@@ -222,7 +222,7 @@ static void pop_input_file (struct scanner_extra *e)
 	}
 }
 
-/* replace the char from pos with given str `seed'*/
+/* replace the char from pos with given str `seed'
 static char* replace_string(char* src, int pos, char* seed)
 {
     char *destination=src;
@@ -234,7 +234,7 @@ static char* replace_string(char* src, int pos, char* seed)
       idx++;
     }
     return destination;
-}
+}*/
 
 static void strip_backslash_line_continuation (char *s)
 {
@@ -603,14 +603,16 @@ IDENTIFIER		({SIMPLE_IDENTIFIER}|{ESCAPED_IDENTIFIER})
 		emit_newline(e);
 	}
 
+        /*No need, using -l option with make_dparser can support Longest Match
+          to avoid mis-parsing 'a&&b' to 'a & (&b)'
 	"&&"([^&](\\\r?\n)?)*+\n {
 		struct scanner_extra *e = yyget_extra(yyscanner);
 		char *s;
-                /*hack:change && to ## to avoid mistake of handling OP &(vpiBitAndOp) and &&(vpiLogAndOp) */
 		s = replace_string(yytext, 0, "##");
 		strip_backslash_line_continuation(s);
 		emit(e, yytext);
 	}
+        */
 
 	"`undef"[ \t]+[^ \t\n]+ {
 		struct scanner_extra *e = yyget_extra(yyscanner);
