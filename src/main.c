@@ -9,7 +9,7 @@
 #include "vpp.h"
 #include "xvpi.h"
 #include "xvpi_elaborate.h"
-
+int verbose=0;
 
 int main (int argc, char **argv)
 {
@@ -40,6 +40,9 @@ int main (int argc, char **argv)
 			debug = 1;
 			break;
 		case 'v':
+                        verbose = 1;
+			break;
+		case 'V':
 			vpi_printf("%s\n(checkout id and build date: %s)\n", xvpi.vlog_info.product, xvpi.vlog_info.version);
 			return EXIT_SUCCESS;
 		case 'h':
