@@ -1,0 +1,27 @@
+//Test item:if-else block 
+module diode(a,c);
+   electrical a, c;
+   inout a, c;
+   parameter real IS = 1.0e-14;
+   parameter real CJO = +9.999E-12;
+   real vdio, idio, qdio,vnew;
+   integer j;
+   analog begin
+       vnex = (vdio > 2.1) ? eww/vdio : vdio+10.3;
+       j=12;
+       qdio=pow(vdio,eww/4.5);
+       qdio=ln(3.4*(6.7-(7.5/3.0)));
+       if (!(vdio < 0.5) && (qdio>0) ) begin
+       //if (j != 10 || vdio < 0.5) begin
+       //if ((vdio < 0.5 || qdio>0) && j != 10) begin
+           vnew = vdio > 0.1 ? eww/vdio : 1.2*vdio+10.3;
+           vdio = -vdio*2%5+vnew*pow(vdio,2);
+           qdio = 0.5 * CJO * (1-sqrt(1-vdio));
+       end else if (vdio > 1.2 || j== 2) begin
+           qdio = 1.5 * CJO * (1-sqrt(vdio-0.6));
+       end else begin
+           qdio = CJO * (2.0*(1.0-sqrt(0.5)) + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+       end
+   end
+endmodule
+

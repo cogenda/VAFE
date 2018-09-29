@@ -1,0 +1,26 @@
+module xor2_va (in1, in2, out);
+  inout in1;
+  inout in2;
+  inout out;
+  parameter real vlow  = 0.0;
+  parameter real vhigh = 5.0;
+
+  electrical in1;
+  electrical in2;
+  electrical out;
+  electrical out2;
+
+  integer    b1;
+  integer    b2;
+
+  analog begin
+    b1 = (V(in1) >= vhigh / 2.0) ? 1 : 0;
+    b2 = (V(in2) >= vhigh / 2.0) ? 1 : 0;
+
+    V(out2) <+ (b1 != b2) ? vhigh : vlow;
+    V(out2) <+ 1.0e+3 * I(out2);
+    V(out, out2) <+ I(out, out2);
+  end
+
+endmodule
+

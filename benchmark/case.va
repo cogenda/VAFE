@@ -1,0 +1,89 @@
+`include "std.va"
+`include "discipline.h"
+//
+`define EXP_THRESHOLD 1e34
+`define MIN_EXP 1e-29
+module diode(a,c);
+   electrical a, c;
+   inout a, c;
+   parameter real IS = 1.0e-14;
+   parameter real CJO = -9.999E-12;
+   real vdio, idio, qdio;
+   integer j, count, rand, total;
+   analog begin
+    count=1;
+    case (BSIM4dioMod)
+                0: begin
+                    evbs = exp(vbs_jct / Nvtms);
+                    T1 = BSIM4xjbvs * exp(-(BSIM4bvs + vbs_jct) / Nvtms);
+                    BSIM4gbs = SourceSatCurrent * (evbs + T1) / Nvtms + _ckt_gmin;
+                end
+                1: begin
+                    T2 = vbs_jct / Nvtms;
+                    if (T2 < -`EXP_THRESHOLD) begin
+                        BSIM4gbs = _ckt_gmin; 
+                    end    
+                    else if (vbs_jct <= BSIM4vjsmFwd) begin
+                        evbs = exp(T2);
+                        BSIM4gbs = SourceSatCurrent * evbs / Nvtms + _ckt_gmin;
+                    end 
+                    else begin
+                        T0 = BSIM4IVjsmFwd / Nvtms;
+                        BSIM4gbs = T0 + _ckt_gmin;
+                    end     
+                end
+                2,3,4: begin
+                    if (vbs_jct < BSIM4vjsmRev) begin
+                        T0 = vbs_jct / Nvtms;
+                        if (T0 < -`EXP_THRESHOLD) begin
+                            evbs = `MIN_EXP;
+                            devbs_dvb = 0.0;
+                        end 
+                        else begin
+                            evbs = exp(T0);
+                            devbs_dvb = evbs / Nvtms;
+                        end
+
+                        T1 = evbs - 1.0;
+                        T2 = BSIM4IVjsmRev + BSIM4SslpRev *
+                            (vbs_jct - BSIM4vjsmRev);
+                        BSIM4gbs = devbs_dvb * T2 + T1 * BSIM4SslpRev + _ckt_gmin;
+                        BSIM4cbs = T1 * T2 + _ckt_gmin * vbs_jct;
+                    end          
+                    else if (vbs_jct <= BSIM4vjsmFwd) begin
+                        T0 = vbs_jct / Nvtms;
+                        if (T0 < -`EXP_THRESHOLD) begin
+                            evbs = `MIN_EXP;
+                            devbs_dvb = 0.0;
+                        end 
+                        else begin
+                            evbs = exp(T0);
+                            devbs_dvb = evbs / Nvtms;
+                        end
+
+                        T1 = (BSIM4bvs + vbs_jct) / Nvtms;
+                        if (T1 > `EXP_THRESHOLD) begin
+                            T2 = `MIN_EXP;
+                            T3 = 0.0;
+                        end 
+                        else begin
+                            T2 = exp(-T1);
+                            T3 = -T2 /Nvtms;
+                        end 
+                        BSIM4gbs = SourceSatCurrent * (devbs_dvb - 
+                            BSIM4xjbvs * T3) + _ckt_gmin;
+                    end 
+                    else begin
+                        BSIM4gbs = BSIM4SslpFwd + _ckt_gmin;
+                        BSIM4cbs = BSIM4IVjsmFwd + BSIM4SslpFwd * (vbs_jct
+					 - BSIM4vjsmFwd) + _ckt_gmin * vbs_jct;
+                        end
+                end // case: 2
+            default: begin
+                $strobe("This is a default case...");
+                end
+            endcase // case(BSIM4dioMod)
+   end
+endmodule
+
+

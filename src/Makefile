@@ -6,6 +6,7 @@ LDFLAGS := -MD -g -O0 -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
 EXE:=vams.exe
+VAfiles:=case.va diode.va ifelse.va operats.va xor2.va
 
 all : $(EXE)
 
@@ -38,6 +39,27 @@ vams_parse.c : vams_keyword_lookup.h
 %.o : %.cc
 	@echo "COMPILE C++: $@"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
+#make test gengold=1  //To generate golden
+#make test 	      //To run the test
+test : $(EXE) 
+	@failed=0 && cd ../benchmark && ln -sf ../src/$(EXE) . && \
+	for vaf in $(VAfiles); do \
+	  if [ -n "$(gengold)" ]; then\
+	    ./$(EXE) $$vaf > ref_$$vaf.log; \
+	  else \
+	    ./$(EXE) $$vaf > tag_$$vaf.log; \
+	    if [ -n "`diff ref_$$vaf.log tag_$$vaf.log`" ]; then \
+	      failed=1 && echo "$$vaf failed."; \
+	    else \
+	      rm tag_$$vaf.log; \
+	    fi \
+	  fi \
+	done && \
+	if [ $$failed = 1 ]; then \
+	  echo "FAIL" && exit 1; \
+	else \
+	  echo "PASS" && exit 0; fi 
 
 ../3rdparty/include/dparse.h ../3rdparty/lib/libdparse.a : ../3rdparty/bin/make_dparser
 ../3rdparty/bin/make_dparser :

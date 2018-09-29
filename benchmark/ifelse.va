@@ -1,0 +1,36 @@
+//Test item:if-else block 
+module diode(a,c);
+   electrical a, c;
+   inout a, c;
+   parameter real IS = 1.0e-14;
+   parameter real CJO = +9.999E-12;
+   real vdio, idio, qdio,vnew;
+   analog begin
+       //vdio = $limit(V(a,c), $vt, vcrit);
+       //idio = IS * (vdio/$vt - 1)*ln(vdio);
+       //I(a,c) <+ idio;
+       qdio=pow(vdio,eww/4.5);
+       qdio=ln(3.4*(6.7-(7.5/3.0)));
+       if (vdio < 0.5) begin
+           qdio = 0.5 * CJO * (1-sqrt(1-vdio));
+           //if (vold >0) begin
+           //   arg = 1 + (vnew-vold) / vtemp;
+           //   if(arg >0)
+           //     vnew = vold + vtemp * ln(arg);
+           //   else
+           //     vnew = vcrit;
+           //end else begin
+           //   vnew = vtemp * ln(vnew/vtemp);              
+           //end
+       end else if (vdio > 1.2) begin
+           qdio = 1.5 * CJO * (1-sqrt(vdio-0.6));
+       end else begin
+           qdio = CJO * (2.0*(1.0-sqrt(0.5)) + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+           //qdio = CJO * (2.0*(1.0-sqrt(0.5))
+           //             + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+       end
+
+       //I(a,c) <+ ddt(qdio);
+   end
+endmodule
+

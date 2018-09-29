@@ -1,0 +1,75 @@
+//Test item: define, analog func inside module, user-def func/macro, if, condi-expr, multi-include
+//sys-func:$limit,$vt
+`include "std.va"
+`include "discipline.h"
+//
+`define ELIM1 1e20
+`define mylimexp(x) (x<ln(`ELIM1) ? (exp(x)) : (`ELIM1*x + `ELIM1 - `ELIM1*ln(`ELIM1)))
+`define COUNT 10
+`define USE_REF
+module diode(a,c);
+   electrical a, c;
+   inout a, c;
+   parameter real IS = 1.0e-14;
+   `ifdef USE_REF
+   parameter real CJO = IS;
+   `else
+   parameter real CJO = +9.999E-12;
+   `endif
+   analog function real spicepnjlim;
+       input vin, vold, vtemp, vcrit, j,k;
+       real vin, vold, vtemp, vcrit, arg, vnew;
+       integer j,k,l;
+       begin
+           vnew = vin;
+           if ((vnew > vcrit) && (abs(vnew-vold) > (vtemp+vtemp))) begin
+                if (vold > 0) begin
+                    arg = 1 + (vnew-vold) / vtemp;
+                    arg = arg*vtemp;
+                    if (arg > 0) begin
+                        vnew = vold + vtemp * ln(arg);
+                        vnew = vold*5.0;
+                    end
+                    else
+                        vnew = vcrit;
+                end else begin
+                    vnew = vtemp * ln(vnew/vtemp);
+                end
+                // $discontinuity(-1); // not yet implemented
+           end
+           spicepnjlim = vnew;
+       end
+   endfunction
+   real vdio, idio, qdio;
+   integer j, count, rand, total;
+   analog begin
+       vdio = $limit(V(a,c), spicepnjlim, $vt, vcrit);
+//       vdio = V(a,c);
+       idio = IS * (`mylimexp(vdio/$vt) - 1)*ln(vdio);
+       I(a,c) <+ idio;
+       if (vdio < 0.5) begin
+           qdio = 0.5 * CJO * (1-sqrt(1-vdio));
+           idio = 1.2e-9*ln(qdio*3.499);
+       end else begin
+           qdio = CJO * (2.0*(1.0-sqrt(0.5))
+                        + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+       end
+       rand = 5;
+       while (rand) begin
+        count = rand + 1 ;
+        rand = rand -1;
+       end
+       while (rand) 
+        rand = rand -1;
+       for ( j = 2; j < 22; j = j + 2 )
+        total = count + j;
+
+       repeat (`COUNT) begin
+         rand = rand + 1 ;
+         total = total + i ;
+       end
+        
+       I(a,c) <+ ddt(qdio);
+   end
+endmodule
+
