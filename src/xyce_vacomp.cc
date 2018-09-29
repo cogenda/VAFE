@@ -12,7 +12,7 @@
 #include <iomanip>
 using namespace std;
 using std::string;
-bool verbose = true;
+extern "C" int verbose;
 //bool verbose = false;
 static int g_indent_width=0;
 static int INDENT_UNIT=2;
@@ -152,7 +152,8 @@ map < objSelect, pair<size_t, const enum_description *> > objSelMap = {
   {vaElse,  {sizeof(vpi_Else_prop)/sizeof(vpi_Else_prop[0]),vpi_Else_prop}},
 };
 
-pair <size_t, const enum_description *> & getObjSelInfo(objSelect objSel)
+pair <size_t, const enum_description *>& 
+getObjSelInfo(objSelect objSel)
 {
   return objSelMap[objSel];
 }
@@ -171,14 +172,14 @@ bool find_item_container(T& container, Ta& item)
 
 //search key in map-like container
 template <typename T, typename Key>
-bool key_exists(T& container, Key& key)
+bool key_exists(const T& container, const Key& key)
 {
     return (container.find(key) != std::end(container));
 }
 
 //To check if a string `src stars with `targ
 bool
-str_startswith(string src, string targ)
+str_startswith(const string src, const string targ)
 {
 if(src.substr(0, targ.size()) == targ)
   return true;
@@ -186,29 +187,52 @@ else
   return false;
 }
 
-//split a string into a vector by token1 and token2
-vector<string> string_split(string line, const char token1, const char token2){
-    vector<string> subArray;
-    int len = line.length();
-    for (int j = 0, k = 0; j < len; j++) {
-        if (line[j] == token1 || line[j] == token2) {
-            string ch = line.substr(k, j - k);
-            k = j+1;
-            if(ch.size()>0)
-              subArray.push_back(ch);
-        }
-        if (j == len - 1) {
-            string ch = line.substr(k, j - k+1);
-            if(ch.size()>0)
-              subArray.push_back(ch);
-        }
-    }
-    return subArray;
+string 
+str_strip(const string& s, const string& chars=" ", int mode=0) {
+//mode =0: trip both side; 1 left side; 2 right side
+  size_t begin = 0;
+  size_t end = s.size()-1;
+  if(mode == 0 || mode == 1)
+  {
+    for(; begin < s.size(); begin++)
+      if(chars.find_first_of(s[begin]) == string::npos)
+        break;
+  }
+  if(mode == 0 || mode == 2)
+  {
+    for(; end > begin; end--)
+      if(chars.find_first_of(s[end]) == string::npos)
+        break;
+  }
+  return s.substr(begin, end-begin+1);
 }
 
-pair <string, string> getAnalogFuncArgDef( string analogFuncArgs, map < string, vector < string > > &analogFuncVars)
+//split a string into a vector by token1 and token2
+vector<string> 
+str_split(const string& line, const char token1, const char token2)
 {
-  vector <string> res = string_split(analogFuncArgs, ',', ' ');
+  vector<string> subArray;
+  int len = line.length();
+  for (int j = 0, k = 0; j < len; j++) {
+      if (line[j] == token1 || line[j] == token2) {
+          string ch = line.substr(k, j - k);
+          k = j+1;
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+      if (j == len - 1) {
+          string ch = line.substr(k, j - k+1);
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+  }
+  return subArray;
+}
+
+pair <string, string> getAnalogFuncArgDef(string analogFuncArgs, 
+    map < string, vector < string > > &analogFuncVars)
+{
+  vector <string> res = str_split(analogFuncArgs, ',', ' ');
   string strArgDef("");
   string strFuncVarDef("");
   unsigned int cnt_arg = 0, idx_var=0;
@@ -299,7 +323,45 @@ typedef struct _vaElement {
 } vaElement;
 
 string
-vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems);
+vpi_resolve_expr_impl (vpiHandle obj, vaElement& vaSpecialItems);
+
+//For parameter stmt
+void 
+resolve_block_parameters(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
+{
+  string parName = (char *) vpi_get_str (vpiName, obj);
+  vpiHandle value_handle = vpi_handle(vpiExpr, obj);
+  retStr = parName + "=" 
+    + str_strip(vpi_resolve_expr_impl (value_handle, vaSpecialItems));
+  vpiHandle iterator = vpi_iterate (vpiValueRange, obj);
+  if(!iterator)
+    return;
+  vpiHandle range_handle = vpi_scan_index (iterator, 1);
+  iterator = vpi_iterate (vpiExpr,range_handle);
+  vpiHandle scan_handle;
+  int idx=0, size = vpi_get (vpiSize, iterator);
+  int cnt = 1, _obj_type, _OP_type;
+  string range_low, range_high, _str;
+  assert(size == 2);
+  for(idx=0; idx < size; idx++)
+  {
+    if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+    {   
+      _obj_type = (int) vpi_get (vpiType, scan_handle);
+      _OP_type = (int) vpi_get (vpiOpType,scan_handle);
+      _str = (char *) vpi_get_str(vpiDecompile,scan_handle);
+      if(_obj_type == vpiOperation)
+      {
+        if(_OP_type == vpiGeOp)
+          range_low = _str;
+        else if(_OP_type == vpiLeOp)
+          range_high = _str;
+      }
+    }
+  }
+  assert(::atof(range_low.c_str()) <= ::atof(range_high.c_str()));
+  retStr += "=" + range_low + "=" + range_high;
+}
 
 //For begin ... end block
 void 
@@ -438,7 +500,6 @@ resolve_block_case(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
         int cnt1=1;
         vpiHandle itr_expr = vpi_iterate (vpiExpr,scan_handle);
         int size1 = vpi_get (vpiSize, itr_expr);
-        cout << "**dbg size1=" << size1 << endl;
         for(int idx=0; idx < size1; idx++)
         {
           if((scan_expr = vpi_scan_index (itr_expr, cnt1++)) != NULL)
@@ -562,7 +623,7 @@ resolve_block_anyFunCall(vpiHandle obj, string& retStr, vaElement& vaSpecialItem
   }
 }
 
-//For any binary OP, TODO more OPs, Ternary OP: c? a:b
+//For any unary, binary & Ternary OP, e.g., Ternary OP: c? a:b
 void 
 resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems)
 {
@@ -571,13 +632,20 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
   int opType = (int) vpi_get (vpiOpType, obj);
-  retStr="(";
+  if(size >1)
+    retStr="(";
   for(idx=0; idx < size; idx++)
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
+      //unary OPs
+      if(opType == vpiMinusOp)
+        retStr += "-";
+      else if(opType == vpiNotOp)
+        retStr += "!";
       retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
       if(idx != size-1) {
+      //binary OPs
         if(opType == vpiAddOp)
           retStr += "+";
         else if(opType == vpiSubOp)
@@ -604,6 +672,7 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
           retStr += " == ";
         else if(opType == vpiNeqOp)
           retStr += " != ";
+        //ternary OPs
         else if(opType == vpiConditionOp)
         {
           if(idx == 0)
@@ -614,7 +683,8 @@ resolve_block_operation(vpiHandle obj, string& retStr, vaElement& vaSpecialItems
       }
     }             
   }
-  retStr += ")";  
+  if(size >1)
+    retStr += ")";  
 }
 
 //For assignment statment lhs=rhs
@@ -696,7 +766,7 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == vpiParameter)
           {
             //TODO should check vpiExpr and do more elaberation
-            return strline;
+            resolve_block_parameters(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiIODecl)
           {
@@ -718,6 +788,11 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             //TODO handle <+ ...
             _retStr = strline;
             resolve_block_contrib(obj, _retStr, vaSpecialItems);
+          }
+          else if(cur_obj_type == vpiAnalogFilterFuncCall)
+            //TODO ddt/ddx/idt
+          {
+            return strline;
           }
           else if(cur_obj_type == vpiRepeat)
           {
@@ -755,7 +830,7 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
   return _retStr;
 }
 
-template<typename T>  //container: vector <Tx>
+template<typename T> //container: vector <Tx>
 void set_vec_iteration_by_name(vpiHandle obj, int iter_type, T& container, vaElement &vaSpecialItems)
 {
   vpiHandle iterator = vpi_iterate (iter_type, obj);
@@ -774,7 +849,7 @@ void set_vec_iteration_by_name(vpiHandle obj, int iter_type, T& container, vaEle
 
 //join the list/vector with div into a string, container: T <string>
 template<typename T>
-string concat_vector2string(T& vec, const string div)
+string concat_vector2string(T& vec, const string div=",")
 {
   string _retStr;
   for(typename T::iterator it=vec.begin(); it != vec.end(); ++it)
@@ -808,8 +883,9 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, map<T1,T2>& contain
         break;
       case vpiParameter:
         {
-          vector<string> _params = string_split(_retString,'=',' ');
-          container[_params[0]].push_back(_params[1]);
+          vector<string> _params = str_split(_retString,'=',' ');
+          for(vector<string>::iterator it=_params.begin()+1; it != _params.end(); ++it)
+            container[_params[0]].push_back(*it);
         }
         break;
       default:
@@ -944,7 +1020,13 @@ vpi_gen_ccode (vpiHandle obj)
             << " (resolved from " << key << ")" << endl;
 	}
       else
-        cout << "key: " << it->first << " value: " << it->second[0] << endl;
+      {
+        cout << "key: " << it->first << " value: " << it->second[0];
+        if(it->second.size() == 3)
+          cout << " with range [" + it->second[1] + ":" + it->second[2] + "]" << endl;
+        else
+          cout << endl;
+      }
     }
 
   //clean the container
