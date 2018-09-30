@@ -7,14 +7,438 @@
 
 #ifdef __cplusplus
 extern "C" {
+extern int verbose;
 void CgenHeader(vpiHandle root);
 void CgenImplement(vpiHandle root);
 int vpi_gen_ccode (vpiHandle obj);
 }
+
+#include <assert.h>
+#include <string>
+#include <list>
+#include <map>
+#include <set>
+#include <utility>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <algorithm>
+#include <iomanip>
+//using namespace std;
+//using std::string;
+
+const int N_VARS_PER_COL=12;
+const int INDENT_UNIT=2;
+const std::string g_loopIncVar="__loop_incr_var";
+
+std::map < int, std::string > va_c_type_map = {
+  {vpiRealVar,    "double"},
+  {vpiIntegerVar, "int"},
+};
+
+std::map < std::string, std::string > va_c_expr_map = {
+  {"ln",    "log"},
+  {"log",   "log10"},
+  {"sqrt",  "sqrt"},
+  {"abs",   "fabs"},
+  {"begin", "{"},
+  {"end",   "}"},
+  {"real",   "double"},
+  {"integer","int"},
+  {"$vt",    "_VT_"},
+  {"$limit", "_LIMIT_"},
+  {"$temperature", "_TEMPER_"},
+  {"$strobe", "_STROBE_"},
+};
+
+typedef enum _objSelection {
+  toplevel = 0,
+  vaPort,
+  vaNet,
+  vaAnaFun,
+  vaVar,
+  vaParam,
+  vaSysFunCall,
+  vaBultinFunCall,
+  vaVFunCall,
+  vaIFunCall,
+  vaContrib,
+  vaCondition,
+  vaIf,    
+  vaElseIf,
+  vaElse,  
+} objSelect;
+
+const enum_description
+  vpi_parameter_prop[] = {
+  {vpiName, "vpiName"},
+  {vpiType, "vpiOperation"},
+  {xvpiValue, "xvpiValue"},
+  {vpiParameter,"vpiParameter"}
+};
+
+const enum_description
+  vpi_port_prop[] = {
+  {vpiPort,"vpiPort"},
+};
+
+const enum_description
+  vpi_condition_prop[] = {
+  {vpiCondition,"vpiCondition"},
+};
+
+const enum_description
+  vpi_Var_prop[] = {
+  {vpiVariables, "vpiVariables" },
+};
+
+const enum_description
+  vpi_net_prop[] = {
+  {vpiNet,"vpiNet"},
+};
+
+const enum_description
+  vpi_anafun_prop[] = {
+  {vpiIODecl,"vpiIODecl"},
+};
+
+const enum_description
+  vpi_If_prop[] = {
+  {vpiStmt, "vpiIfElse" },
+};
+
+const enum_description
+  vpi_ElseIf_prop[] = {
+  {vpiElseStmt, "vpiIfElse" },
+};
+
+const enum_description
+  vpi_Else_prop[] = {
+  {vpiElseStmt, "vpiIfElse" },
+};
+
+const enum_description
+  vpi_srccode_prop[] = {
+  {vpiModule,"vpiModule"},
+  {vpiBegin,"vpiBegin"},
+  {vpiNamedBegin,"vpiNamedBegin"},
+  {vpiNamedFork,"vpiNamedFork"},
+  {vpiFork,"vpiFork"},
+  {vpiCase,"vpiCase"},
+  {vpiFor,"vpiFor"},
+  {vpiIf,"vpiIf"},
+  {vpiIfElse,"vpiIfElse"},
+  {vpiRepeat,"vpiRepeat"},
+  {vpiCondition, "vpiCondition" },
+  {vpiElseStmt, "vpiElseStmt" },
+  {vpiForIncStmt, "vpiForIncStmt" },
+  {vpiScope, "vpiScope" },
+  {vpiUse, "vpiUse" },
+  {vpiExpr, "vpiExpr" },
+  {vpiPrimitive, "vpiPrimitive" },
+  {vpiStmt, "vpiStmt" },
+  {vpiAnalogFunction,"vpiAnalogFunction"},
+  {vpiFunction,"vpiFunction"},
+  {vpiTask,"vpiTask"},
+  {vpiAssignment,"vpiAssignment"},
+  {vpiLhs,"vpiLhs"},
+  {vpiRhs,"vpiRhs"},
+  {vpiOperand,"vpiOperand"},
+  {vpiArgument,"vpiArgument"},
+  {vpiBranch,"vpiBranch"},
+
+};
+
+typedef enum _vaElectricalType {
+  VA_Branch = 0,
+  VA_Voltage,
+  VA_Charge,
+  VA_Capacitance
+} vaElectricalType;
+
+typedef enum _vaStates {
+  VA_ModuleTopBlock = 0, //0: toplevel exclued module block & other function
+  VA_ModuleInitBlock,    //1: @(initial_step)
+  VA_AnalogFunctionDef,  //2: analog func block 
+  VA_ContribStmt,        //3: Y <+ X_expr stmt (w/o ddt/ddx/...)
+                         //4: Y <+ X_expr+ddt/ddx/idt(...)
+  VA_ContribWithFilterFunc 
+} vaStates;
+
+typedef struct _contribElement {
+  vaElectricalType etype;
+  std::string contrib_lhs;
+  std::string contrib_rhs;
+  std::vector<std::string> nodes;
+}contribElement;
+
+typedef struct _vaElement {
+  std::map < std::string, std::vector < std::string > > m_analogFuncVars;
+  std::map < std::string, std::vector < std::string > > m_moduleVars;
+  std::map < std::string, std::vector < std::string > > m_params;
+  std::vector < std::string > m_srcLines;    
+  bool m_isSrcLinesElseIf;    
+  std::set < int > m_srcLineNoRec;    
+  std::vector < std::string > m_resolvedCcodes;    
+  std::vector < std::string > m_modulePorts;    
+  std::vector < std::string > m_moduleNets;    
+  std::string m_analogFuncArgDef;
+  std::string m_moduleArgDef;
+  std::vector < std::string > m_analogFuncNames;
+  std::vector < contribElement > m_contribs;
+  //current handling va code scope 
+  vaStates current_scope;  
+  vpiHandle objPended;
+} vaElement;
+
+
+std::map < objSelect, std::pair<size_t, const enum_description *> > objSelMap = {
+  {toplevel,{sizeof(vpi_srccode_prop)/sizeof(vpi_srccode_prop[0]),    vpi_srccode_prop}},
+  {vaPort,  {sizeof(vpi_port_prop)/sizeof(vpi_port_prop[0]),          vpi_port_prop}},
+  {vaNet,   {sizeof(vpi_net_prop)/sizeof(vpi_net_prop[0]),            vpi_net_prop}},
+  {vaAnaFun,{sizeof(vpi_anafun_prop)/sizeof(vpi_anafun_prop[0]),      vpi_anafun_prop}},
+  {vaVar,   {sizeof(vpi_Var_prop)/sizeof(vpi_Var_prop[0]),            vpi_Var_prop}},
+  {vaParam, {sizeof(vpi_parameter_prop)/sizeof(vpi_parameter_prop[0]),vpi_parameter_prop}},
+  {vaCondition, {sizeof(vpi_condition_prop)/sizeof(vpi_condition_prop[0]),vpi_condition_prop}},
+  {vaIf,    {sizeof(vpi_If_prop)/sizeof(vpi_If_prop[0]),vpi_If_prop}},
+  {vaElseIf,{sizeof(vpi_ElseIf_prop)/sizeof(vpi_ElseIf_prop[0]),vpi_ElseIf_prop}},
+  {vaElse,  {sizeof(vpi_Else_prop)/sizeof(vpi_Else_prop[0]),vpi_Else_prop}},
+};
+
+std::pair <size_t, const enum_description *>& 
+getObjSelInfo(objSelect objSel)
+{
+  return objSelMap[objSel];
+}
+
+//search Ta in T which is typex <Ta>
+template<typename T, typename Ta> 
+bool find_item_container(T& container, Ta& item)
+{
+  if (container.size () == 0)
+    return false;
+  typename T::iterator it = find(container.begin(),container.end(),item);
+  if (it == container.end())
+    return false;
+  return true;
+}
+
+//search key in map-like container
+template <typename T, typename Key>
+bool key_exists(const T& container, const Key& key)
+{
+    return (container.find(key) != std::end(container));
+}
+
+//To check if a std::string `src stars with `targ
+bool
+str_startswith(const std::string& src, const std::string& targ)
+{
+if(src.substr(0, targ.size()) == targ)
+  return true;
+else
+  return false;
+}
+
+std::string 
+str_strip(const std::string s, const std::string chars=" ", int mode=0)
+  //mode =0: trip both side; 1 left side; 2 right side
+{
+  size_t begin = 0;
+  size_t end = s.size()-1;
+  if(mode == 0 || mode == 1)
+  {
+    for(; begin < s.size(); begin++)
+      if(chars.find_first_of(s[begin]) == std::string::npos)
+        break;
+  }
+  if(mode == 0 || mode == 2)
+  {
+    for(; end > begin; end--)
+      if(chars.find_first_of(s[end]) == std::string::npos)
+        break;
+  }
+  return s.substr(begin, end-begin+1);
+}
+
+//split a string into a vector by token1 and token2
+std::vector<std::string> 
+str_split(const std::string& line, const char token1, const char token2)
+{
+  std::vector<std::string> subArray;
+  int len = line.length();
+  for (int j = 0, k = 0; j < len; j++) {
+      if (line[j] == token1 || line[j] == token2) {
+          std::string ch = line.substr(k, j - k);
+          k = j+1;
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+      if (j == len - 1) {
+          std::string ch = line.substr(k, j - k+1);
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+  }
+  return subArray;
+}
+
+std::pair <std::string, std::string> 
+getAnalogFuncArgDef(std::string& analogFuncArgs, 
+    std::map < std::string, std::vector < std::string > >& analogFuncVars)
+{
+  std::vector <std::string> res = str_split(analogFuncArgs, ',', ' ');
+  std::string strArgDef("");
+  std::string strFuncVarDef("");
+  unsigned int cnt_arg = 0, idx_var=0;
+  if(res.size() >0 && res[0] == "input")  //remove the leading keyword `input'
+    res.erase(res.begin ());
+  
+  //search key in map to find the var's type
+  for (std::map < std::string, std::vector <std::string> >::iterator itMap = analogFuncVars.begin (); 
+      itMap != analogFuncVars.end (); ++itMap)
+  {
+    idx_var = 0;
+    for (std::vector < std::string >::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
+    {
+      if (find_item_container(res, *itVar))
+        //if the key matches arg 
+      {
+        strArgDef += itMap->first + " " + *itVar;
+        strArgDef += ",";
+        cnt_arg += 1;
+      }
+      else
+        //Not match into vars list
+      {
+        if(idx_var == 0)
+          strFuncVarDef += itMap->first + " ";
+        strFuncVarDef += *itVar;
+        if (itVar != itMap->second.end()-1)
+          strFuncVarDef += ",";
+        else
+          strFuncVarDef += ";\n";
+        idx_var += 1;
+      }
+    }
+  }
+  assert(cnt_arg == res.size());
+  //remove the tail ',' in args list
+  if(strArgDef[strArgDef.size()-1] == ',')
+    strArgDef.erase(strArgDef.size()-1, 1); 
+  std::pair <std::string, std::string> _anaFuncDefs = {strArgDef,strFuncVarDef};
+  return _anaFuncDefs;
+}
+
+template<typename T> 
+void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
+{
+  unsigned i=0;
+  for(typename std::map<T, std::vector<T> >::iterator itmap = moduleVars.begin (); 
+        itmap != moduleVars.end (); ++itmap)
+  {
+    moduleArgsDef += itmap->first + " ";
+    i = 0;
+    for(typename std::vector<T>::iterator itv=itmap->second.begin (); 
+        itv != itmap->second.end (); ++itv,i++)
+    {
+      if(i < N_VARS_PER_COL)
+      {
+        if(i != 0)
+          moduleArgsDef += ", ";
+        moduleArgsDef += *itv;
+      }
+      else
+      {
+        moduleArgsDef += ";\n" + itmap->first + " " + *itv;
+        i=0;
+      }
+    }
+    moduleArgsDef += ";\n";
+  }
+}
+
+template<typename T> 
+void clean_container(T& container)
+{
+  container.clear();
+}
+
+//join the list/vector with div into a string, container: T <string>
+template<typename T>
+std::string concat_vector2string(T& vec, const std::string div=",")
+{
+  std::string _retStr;
+  for(typename T::iterator it=vec.begin(); it != vec.end(); ++it)
+  {
+    _retStr += *it;
+    if(it != vec.end()-1)
+      _retStr += div;
+  }
+  return _retStr;
+}
+
+std::string
+vpi_resolve_expr_impl (vpiHandle obj, vaElement& vaSpecialItems);
+
+template<typename T> //container: vector <Tx>
+void set_vec_iteration_by_name(vpiHandle obj, int iter_type, T& container, vaElement &vaSpecialItems)
+{
+  vpiHandle iterator = vpi_iterate (iter_type, obj);
+  vpiHandle scan_handle;
+  int idx=0, size = vpi_get (vpiSize, iterator);
+  int cnt = 1;
+  for(idx=0; idx < size; idx++)
+  {
+    if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+    {
+      std::string _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
+      container.push_back (_retString);
+    }
+  }  
+}
+
+
+template<typename T1, typename T2> //container: map <T1, T2>
+void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& container, vaElement &vaSpecialItems)
+{
+  vpiHandle iterator = vpi_iterate (iter_type, obj);
+  vpiHandle scan_handle;
+  int idx=0, size = vpi_get (vpiSize, iterator);
+  int cnt = 1;
+  for(idx=0; idx < size; idx++)
+  {
+    if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+    {
+
+      std::string _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
+      int _type = (int) vpi_get (vpiType, scan_handle);
+      switch(_type) {
+        //TODO add more types
+      case vpiRealVar:
+      case vpiIntegerVar:
+        container[va_c_type_map[_type]].push_back(_retString);
+        break;
+      case vpiParameter:
+        {
+          std::vector<std::string> _params = str_split(_retString,'=',' ');
+          for(std::vector<std::string>::iterator it=_params.begin()+1; it != _params.end(); ++it)
+            container[_params[0]].push_back(*it);
+        }
+        break;
+      default:
+        std::cout << "No supported type!" << std::endl;
+        break;
+      }
+    }
+  }  
+}
+
 #else
 void CgenHeader( vpiHandle root);
 void CgenImplement( vpiHandle root);
 int vpi_gen_ccode (vpiHandle obj);
 #endif
+
 
 #endif

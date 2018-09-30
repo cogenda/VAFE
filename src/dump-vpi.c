@@ -1,4 +1,3 @@
-#include "xyce_vacomp.h"
 #include <stdlib.h>
 #include <vpi_user.h>
 

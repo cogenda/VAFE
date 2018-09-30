@@ -49,8 +49,12 @@ test : $(EXE)
 	    ./$(EXE) $$vaf > ref_$$vaf.log; \
 	  else \
 	    ./$(EXE) $$vaf > tag_$$vaf.log; \
-	    if [ -n "`diff ref_$$vaf.log tag_$$vaf.log`" ]; then \
+	    ret_diff=`diff ref_$$vaf.log tag_$$vaf.log`; \
+	    if [ -n "$$ret_diff" ]; then \
 	      failed=1 && echo "$$vaf failed."; \
+	      if [ -n "$(verbose)" ]; then \
+		diff ref_$$vaf.log tag_$$vaf.log; \
+	      fi \
 	    else \
 	      rm tag_$$vaf.log; \
 	    fi \
