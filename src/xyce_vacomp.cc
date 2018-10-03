@@ -283,7 +283,7 @@ resolve_block_ifelse(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
 void            
 resolve_block_analogFilterFunCall(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
 {
-  //Firstly return 0.0 for the orignal assigment line
+  //Firstly return 0.0 for the orignal assigment line if it's ddt
   std::string _strName = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
   if(_strName == "DDT")  //Only process ddt
@@ -435,7 +435,32 @@ resolve_block_assign(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
   retStr.insert(0, g_indent_width, ' ');
 }
 
-
+//For Event control which starts @(...) begin ... end
+void
+resolve_block_eventControl(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+{
+  vpiHandle objCond = vpi_handle(vpiCondition, obj);
+  int _OP_type = (int) vpi_get (vpiOpType, objCond);
+  if(_OP_type == vpiInitialStepOp)
+  {
+    vpiHandle objStmt = vpi_handle(vpiStmt, obj);  
+    std::string _retStr="/*The initial_step block stars...*/\n";
+    _retStr.insert(0, g_indent_width, ' ');
+    retStr += _retStr;
+    _retStr = vpi_resolve_expr_impl (objStmt, vaSpecialItems);
+    retStr += _retStr;
+    _retStr="/*The initial_step block ends...*/\n";
+    _retStr.insert(0, g_indent_width, ' ');
+    retStr += _retStr;
+    vaSpecialItems.m_resolvedInitStepCcodes.push_back(retStr);
+    return;
+  }
+  else
+  {
+    std::cout << "Warn Event type:" << _OP_type << " not supported yet!" <<std::endl;
+    return;
+  }
+}
 //For analog I/V contribtion expression x<+...
 void 
 resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
@@ -465,6 +490,8 @@ resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIt
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
       _retStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);     
+      //make sure the args in V/I(arg1,args,..) within Module Net set
+      assert(item_exists(vaSpecialItems.m_moduleNets,_retStr));
       nodes.push_back(_retStr);
     }
   }
@@ -596,7 +623,7 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             resolve_block_contrib(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiAnalogFilterFuncCall)
-            //TODO ddt/ddx/idt
+            //handle analog OP ddt/ddx/idt
           {
             _retStr = strline;
             resolve_block_analogFilterFunCall(obj, _retStr, vaSpecialItems);
@@ -625,6 +652,11 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           {
             //already handled at other higher level stmt ...
             std::cout << "vpiCondition here..." << std::endl;
+          }
+          else if(cur_obj_type == vpiEventControl)
+          {
+            //handle @(initial_step) ... block
+            resolve_block_eventControl(obj, _retStr, vaSpecialItems);
           }
 
 	  if (verbose)
@@ -679,6 +711,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   {
     if((obj_scan = vpi_scan_index (objStmt_itr, cnt++)) != NULL)
     {
+      //both code into this container
       vaSpecialItems.m_resolvedCcodes.push_back(
         vpi_resolve_expr_impl (obj_scan, vaSpecialItems));
     }
