@@ -1,12 +1,26 @@
+#Makefile for Verilog-A compiler front end
+#Usages:
+#make [DEBUG=0|1] [release] //build binary EXE
+#make test gengold=1  //To generate golden
+#make test [verbose=1]//To run the test [print details]
+
 CC := gcc
 CXX := g++
-CFLAGS := -MD -g -O0 -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
-CXXFLAGS := -MD -g -O0 -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c++11
-LDFLAGS := -MD -g -O0 -Wall -ldl -lm -lpthread -fPIC
+CFLAGS   := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
+CXXFLAGS := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c++11
+LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
 EXE:=vams.exe
-VAfiles:=case.va diode.va ifelse.va operats.va xor2.va
+VAfiles:=case.va diode.va ifelse.va operats.va xor2.va contrib.va macro.va
+DEBUG ?= 1
+ifeq ($(DEBUG),1)
+    CFLAGS += -DDEBUG -ggdb
+    CXXFLAGS += -DDEBUG -ggdb
+else
+    CFLAGS += -DNDEBUG -O3
+    CXXFLAGS += -DNDEBUG -O3
+endif    
 
 all : $(EXE)
 
@@ -40,8 +54,6 @@ vams_parse.c : vams_keyword_lookup.h
 	@echo "COMPILE C++: $@"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-#make test gengold=1  //To generate golden
-#make test 	      //To run the test
 test : $(EXE) 
 	@failed=0 && cd ../benchmark && ln -sf ../src/$(EXE) . && \
 	for vaf in $(VAfiles); do \
