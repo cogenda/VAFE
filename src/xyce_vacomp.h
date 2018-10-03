@@ -24,19 +24,21 @@ int vpi_gen_ccode (vpiHandle obj);
 #include <iostream>
 #include <algorithm>
 #include <iomanip>
-//using namespace std;
-//using std::string;
+typedef std::string string_t;
+typedef std::pair< std::string, std::string > strPair;
+typedef std::vector < std::string > strVec;
+typedef std::map < std::string, strVec > dictStrVec;
 
 const int N_VARS_PER_COL=12;
 const int INDENT_UNIT=2;
-const std::string g_loopIncVar="__loop_incr_var";
+const string_t g_loopIncVar="__loop_incr_var";
 
-std::map < int, std::string > va_c_type_map = {
+std::map < int, string_t > va_c_type_map = {
   {vpiRealVar,    "double"},
   {vpiIntegerVar, "int"},
 };
 
-std::map < std::string, std::string > va_c_expr_map = {
+std::map < string_t, string_t > va_c_expr_map = {
   {"ln",    "log"},
   {"log",   "log10"},
   {"sqrt",  "sqrt"},
@@ -167,28 +169,27 @@ typedef enum _vaStates {
 
 typedef struct _contribElement {
   vaElectricalType etype;
-  std::string contrib_lhs;
-  std::string contrib_rhs;
-  std::vector<std::string> nodes;
+  string_t contrib_lhs;
+  string_t contrib_rhs;
+  strVec nodes;
 }contribElement;
 
 typedef struct _vaElement {
-  std::map < std::string, std::vector < std::string > > m_analogFuncVars;
-  std::map < std::string, std::vector < std::string > > m_moduleVars;
-  std::map < std::string, std::vector < std::string > > m_params;
-  std::vector < std::string > m_srcLines;    
-  bool m_isSrcLinesElseIf;    
-  std::set < int > m_srcLineNoRec;    
-  std::vector < std::string > m_resolvedCcodes;    
-  std::vector < std::string > m_modulePorts;    
-  std::vector < std::string > m_moduleNets;    
-  std::string m_analogFuncArgDef;
-  std::string m_moduleArgDef;
-  std::vector < std::string > m_analogFuncNames;
+  dictStrVec m_analogFuncVars;
+  dictStrVec m_moduleVars;
+  dictStrVec m_params;
+  strVec m_resolvedInitStepCcodes;    
+  strVec m_resolvedCcodes;    
+  strVec m_modulePorts;    
+  strVec m_moduleNets;    
+  string_t m_analogFuncArgDef;
+  string_t m_moduleArgDef;
+  strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;
   //current handling va code scope 
   vaStates current_scope;  
   vpiHandle objPended;
+  bool m_isSrcLinesElseIf;    
 } vaElement;
 
 
@@ -230,9 +231,21 @@ bool key_exists(const T& container, const Key& key)
     return (container.find(key) != std::end(container));
 }
 
+//search item in vector-like container
+template <typename T, typename Key>
+bool item_exists(const T& vcontainer, const Key& x)
+{
+  if(vcontainer.empty())
+    return false;
+  if(std::find(vcontainer.begin(), vcontainer.end(), x) != vcontainer.end()) 
+    return true;
+  else 
+    return false;
+}
+
 //To check if a std::string `src stars with `targ
 bool
-str_startswith(const std::string& src, const std::string& targ)
+str_startswith(const string_t& src, const string_t& targ)
 {
 if(src.substr(0, targ.size()) == targ)
   return true;
@@ -240,8 +253,8 @@ else
   return false;
 }
 
-std::string 
-str_strip(const std::string s, const std::string chars=" ", int mode=0)
+string_t 
+str_strip(const string_t s, const string_t chars=" ", int mode=0)
   //mode =0: trip both side; 1 left side; 2 right side
 {
   size_t begin = 0;
@@ -249,33 +262,33 @@ str_strip(const std::string s, const std::string chars=" ", int mode=0)
   if(mode == 0 || mode == 1)
   {
     for(; begin < s.size(); begin++)
-      if(chars.find_first_of(s[begin]) == std::string::npos)
+      if(chars.find_first_of(s[begin]) == string_t::npos)
         break;
   }
   if(mode == 0 || mode == 2)
   {
     for(; end > begin; end--)
-      if(chars.find_first_of(s[end]) == std::string::npos)
+      if(chars.find_first_of(s[end]) == string_t::npos)
         break;
   }
   return s.substr(begin, end-begin+1);
 }
 
 //split a string into a vector by token1 and token2
-std::vector<std::string> 
-str_split(const std::string& line, const char token1, const char token2)
+strVec
+str_split(const string_t& line, const char token1, const char token2)
 {
-  std::vector<std::string> subArray;
+  strVec subArray;
   int len = line.length();
   for (int j = 0, k = 0; j < len; j++) {
       if (line[j] == token1 || line[j] == token2) {
-          std::string ch = line.substr(k, j - k);
+          string_t ch = line.substr(k, j - k);
           k = j+1;
           if(ch.size()>0)
             subArray.push_back(ch);
       }
       if (j == len - 1) {
-          std::string ch = line.substr(k, j - k+1);
+          string_t ch = line.substr(k, j - k+1);
           if(ch.size()>0)
             subArray.push_back(ch);
       }
@@ -283,23 +296,23 @@ str_split(const std::string& line, const char token1, const char token2)
   return subArray;
 }
 
-std::pair <std::string, std::string> 
-getAnalogFuncArgDef(std::string& analogFuncArgs, 
-    std::map < std::string, std::vector < std::string > >& analogFuncVars)
+strPair
+getAnalogFuncArgDef(string_t& analogFuncArgs, 
+    dictStrVec& analogFuncVars)
 {
-  std::vector <std::string> res = str_split(analogFuncArgs, ',', ' ');
-  std::string strArgDef("");
-  std::string strFuncVarDef("");
+  strVec res = str_split(analogFuncArgs, ',', ' ');
+  string_t strArgDef("");
+  string_t strFuncVarDef("");
   unsigned int cnt_arg = 0, idx_var=0;
   if(res.size() >0 && res[0] == "input")  //remove the leading keyword `input'
     res.erase(res.begin ());
   
   //search key in map to find the var's type
-  for (std::map < std::string, std::vector <std::string> >::iterator itMap = analogFuncVars.begin (); 
+  for (dictStrVec::iterator itMap = analogFuncVars.begin (); 
       itMap != analogFuncVars.end (); ++itMap)
   {
     idx_var = 0;
-    for (std::vector < std::string >::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
+    for (strVec::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
     {
       if (find_item_container(res, *itVar))
         //if the key matches arg 
@@ -326,7 +339,7 @@ getAnalogFuncArgDef(std::string& analogFuncArgs,
   //remove the tail ',' in args list
   if(strArgDef[strArgDef.size()-1] == ',')
     strArgDef.erase(strArgDef.size()-1, 1); 
-  std::pair <std::string, std::string> _anaFuncDefs = {strArgDef,strFuncVarDef};
+  strPair _anaFuncDefs = {strArgDef,strFuncVarDef};
   return _anaFuncDefs;
 }
 
@@ -366,9 +379,9 @@ void clean_container(T& container)
 
 //join the list/vector with div into a string, container: T <string>
 template<typename T>
-std::string concat_vector2string(T& vec, const std::string div=",")
+string_t concat_vector2string(T& vec, const string_t div=",")
 {
-  std::string _retStr;
+  string_t _retStr;
   for(typename T::iterator it=vec.begin(); it != vec.end(); ++it)
   {
     _retStr += *it;
@@ -378,7 +391,7 @@ std::string concat_vector2string(T& vec, const std::string div=",")
   return _retStr;
 }
 
-std::string
+string_t
 vpi_resolve_expr_impl (vpiHandle obj, vaElement& vaSpecialItems);
 
 template<typename T> //container: vector <Tx>
@@ -392,7 +405,7 @@ void set_vec_iteration_by_name(vpiHandle obj, int iter_type, T& container, vaEle
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
-      std::string _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
+      string_t _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
       container.push_back (_retString);
     }
   }  
@@ -411,7 +424,7 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
 
-      std::string _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
+      string_t _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
       int _type = (int) vpi_get (vpiType, scan_handle);
       switch(_type) {
         //TODO add more types
@@ -421,8 +434,8 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
         break;
       case vpiParameter:
         {
-          std::vector<std::string> _params = str_split(_retString,'=',' ');
-          for(std::vector<std::string>::iterator it=_params.begin()+1; it != _params.end(); ++it)
+          strVec _params = str_split(_retString,'=',' ');
+          for(strVec::iterator it=_params.begin()+1; it != _params.end(); ++it)
             container[_params[0]].push_back(*it);
         }
         break;
