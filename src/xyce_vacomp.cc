@@ -10,10 +10,10 @@ static int g_incr_idx=0;
 
 //For parameter stmt, get value and range concat with '='
 void 
-resolve_block_parameters(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_parameters(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::vector <std::string> _parValues;
-  std::string parName = (char *) vpi_get_str (vpiName, obj);
+  strVec _parValues;
+  string_t parName = (char *) vpi_get_str (vpiName, obj);
   _parValues.push_back(parName);
   vpiHandle value_handle = vpi_handle(vpiExpr, obj);
   _parValues.push_back( 
@@ -29,7 +29,7 @@ resolve_block_parameters(vpiHandle obj, std::string& retStr, vaElement& vaSpecia
   vpiHandle scan_handle;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1, _obj_type, _OP_type;
-  std::string range_low, range_high, _str;
+  string_t range_low, range_high, _str;
   assert(size == 2);
   for(idx=0; idx < size; idx++)
   {
@@ -55,13 +55,13 @@ resolve_block_parameters(vpiHandle obj, std::string& retStr, vaElement& vaSpecia
 
 //For begin ... end block
 void 
-resolve_block_begin(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_begin(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle iterator = vpi_iterate (vpiStmt, obj);
   vpiHandle scan_handle;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
-  retStr += std::string("{\n").insert(0, g_indent_width, ' ');
+  retStr += string_t("{\n").insert(0, g_indent_width, ' ');
   for(idx=0; idx < size; idx++)
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
@@ -72,17 +72,17 @@ resolve_block_begin(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItem
     }
     retStr += "\n";
   }
-  retStr += std::string("}\n").insert(0, g_indent_width, ' ');
+  retStr += string_t("}\n").insert(0, g_indent_width, ' ');
 }
 
 //For while(expr) begin ... end block
 void
-resolve_block_while(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_while(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string strCond="";
+  string_t strCond="";
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
-  retStr += std::string("while(").insert(0, g_indent_width, ' ');
+  retStr += string_t("while(").insert(0, g_indent_width, ' ');
   retStr += strCond;
   retStr += ")\n";
   vpiHandle objWhile_body = vpi_handle(vpiStmt, obj);
@@ -98,9 +98,9 @@ resolve_block_while(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItem
 
 //For repeat(expr) block where translates it to while(expr) in C
 void
-resolve_block_repeat(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_repeat(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string strCond="", incVar=g_loopIncVar, _strtmp;
+  string_t strCond="", incVar=g_loopIncVar, _strtmp;
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
   incVar += std::to_string(g_incr_idx++);
@@ -123,9 +123,9 @@ resolve_block_repeat(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
 
 //For for-loop block
 void
-resolve_block_for(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_for(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string strCond, strIncr, strInit;
+  string_t strCond, strIncr, strInit;
   int _indent_bak = g_indent_width;
   g_indent_width = 0;
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
@@ -158,7 +158,7 @@ resolve_block_for(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
 // default: <blockn>
 //endcase
 void
-resolve_block_case(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_case(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   /* case strunct in vams AST
   obj  vpiCondition
@@ -168,8 +168,8 @@ resolve_block_case(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems
         obj  vpiExpr[n]
       obj  vpiStmt
     */
-  std::string strCond="";
-  std::string _tmpStr = "";
+  string_t strCond="";
+  string_t _tmpStr = "";
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
   retStr += "switch(" + strCond + "){\n";
@@ -200,7 +200,7 @@ resolve_block_case(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems
           }
         }
         vpiHandle objCaseBlock = vpi_handle(vpiStmt, scan_handle);
-        std::string strline = (char *) vpi_get_str (vpiDecompile, scan_handle);
+        string_t strline = (char *) vpi_get_str (vpiDecompile, scan_handle);
         if(str_startswith(strline, "default"))
           //here goes to default block
         {
@@ -213,7 +213,7 @@ resolve_block_case(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems
         {
           g_indent_width += INDENT_UNIT;
           _tmpStr = vpi_resolve_expr_impl (objCaseBlock, vaSpecialItems);
-          _tmpStr += std::string("break;\n").insert(0, g_indent_width, ' ');
+          _tmpStr += string_t("break;\n").insert(0, g_indent_width, ' ');
           retStr += _tmpStr;
           g_indent_width -= INDENT_UNIT;
         }
@@ -226,20 +226,20 @@ resolve_block_case(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems
 }
 
 void 
-resolve_block_ifelse(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string strCond="", strCondElseIf="";
+  string_t strCond="", strCondElseIf="";
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
   if(vaSpecialItems.m_isSrcLinesElseIf)
   {
     g_indent_width -= INDENT_UNIT;
-    retStr += std::string("else if(").insert(0, g_indent_width, ' ');
+    retStr += string_t("else if(").insert(0, g_indent_width, ' ');
     g_indent_width += INDENT_UNIT;
   }
   else
   {
-    retStr += std::string("if(").insert(0, g_indent_width, ' ');
+    retStr += string_t("if(").insert(0, g_indent_width, ' ');
   }
   retStr += strCond;
   retStr += ")\n";
@@ -271,7 +271,7 @@ resolve_block_ifelse(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
     else
       //Else block
     {
-      retStr += std::string("else\n").insert(0, g_indent_width, ' ');
+      retStr += string_t("else\n").insert(0, g_indent_width, ' ');
       retStr += strCondElseIf;
       //_retStr += strCondElseIf.insert(0, g_indent_width, ' ');
       vaSpecialItems.m_isSrcLinesElseIf = false;
@@ -281,10 +281,10 @@ resolve_block_ifelse(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
 
 //For ddt/ddx/idt operator (Now only support ddt)
 void            
-resolve_block_analogFilterFunCall(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   //Firstly return 0.0 for the orignal assigment line if it's ddt
-  std::string _strName = (char *) vpi_get_str (vpiName, obj);
+  string_t _strName = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
   if(_strName == "DDT")  //Only process ddt
     retStr = "0.0";
@@ -298,16 +298,16 @@ resolve_block_analogFilterFunCall(vpiHandle obj, std::string& retStr, vaElement&
 
 //For V/I probing fucntion call: V(a,c), I(d,s),...
 void            
-resolve_block_branchProbFunCall(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string _strType = (char *) vpi_get_str (vpiName, obj);
+  string_t _strType = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   assert(_strType == "V" || _strType == "I");
   
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
   vpiHandle scan_handle;
-  std::vector<std::string> nodes;
-  std::string _retStr;
+  strVec nodes;
+  string_t _retStr;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
   for(idx=0; idx < size; idx++)
@@ -323,9 +323,9 @@ resolve_block_branchProbFunCall(vpiHandle obj, std::string& retStr, vaElement& v
 
 //For any function call: builtin, system, analog function call, etc
 void 
-resolve_block_anyFunCall(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  std::string anyFuncName = (char *) vpi_get_str (vpiName, obj);
+  string_t anyFuncName = (char *) vpi_get_str (vpiName, obj);
   if(key_exists(va_c_expr_map, anyFuncName))
   {
     retStr=va_c_expr_map[anyFuncName] + "(";
@@ -357,7 +357,7 @@ resolve_block_anyFunCall(vpiHandle obj, std::string& retStr, vaElement& vaSpecia
 
 //For any unary, binary & Ternary OP, e.g., Ternary OP: c? a:b
 void 
-resolve_block_operation(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_operation(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle iterator = vpi_iterate (vpiOperand, obj);
   vpiHandle scan_handle;
@@ -421,12 +421,12 @@ resolve_block_operation(vpiHandle obj, std::string& retStr, vaElement& vaSpecial
 
 //For assignment statment lhs=rhs
 void 
-resolve_block_assign(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_assign(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle objLhs = vpi_handle(vpiLhs, obj);
   vpiHandle objRhs = vpi_handle(vpiRhs, obj);
-  std::string _strLhs = vpi_resolve_expr_impl (objLhs, vaSpecialItems);
-  std::string _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
+  string_t _strLhs = vpi_resolve_expr_impl (objLhs, vaSpecialItems);
+  string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
   if( find_item_container(vaSpecialItems.m_analogFuncNames, _strLhs))
     //replace the 'function-name = Rhs' as 'return Rhs;'
     retStr += "return " + _strRhs + ";";
@@ -437,14 +437,14 @@ resolve_block_assign(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIte
 
 //For Event control which starts @(...) begin ... end
 void
-resolve_block_eventControl(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   int _OP_type = (int) vpi_get (vpiOpType, objCond);
   if(_OP_type == vpiInitialStepOp)
   {
     vpiHandle objStmt = vpi_handle(vpiStmt, obj);  
-    std::string _retStr="/*The initial_step block stars...*/\n";
+    string_t _retStr="/*The initial_step block stars...*/\n";
     _retStr.insert(0, g_indent_width, ' ');
     retStr += _retStr;
     _retStr = vpi_resolve_expr_impl (objStmt, vaSpecialItems);
@@ -463,13 +463,13 @@ resolve_block_eventControl(vpiHandle obj, std::string& retStr, vaElement& vaSpec
 }
 //For analog I/V contribtion expression x<+...
 void 
-resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialItems)
+resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle objRhs = vpi_handle(vpiRhs, obj);
-  std::string _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
+  string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
   vpiHandle objLhs = vpi_handle(vpiBranch, obj);
   vaElectricalType _etype;
-  std::string _strType = (char *) vpi_get_str (vpiName, objLhs);
+  string_t _strType = (char *) vpi_get_str (vpiName, objLhs);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   if(_strType == "V")
     _etype = VA_Voltage;
@@ -481,8 +481,8 @@ resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIt
   vpiHandle iterator = vpi_iterate (vpiArgument, objLhs);
   vpiHandle scan_handle;
   contribElement _contrib;
-  std::vector<std::string> nodes;
-  std::string _retStr;
+  strVec nodes;
+  string_t _retStr;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
   for(idx=0; idx < size; idx++)
@@ -495,7 +495,7 @@ resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIt
       nodes.push_back(_retStr);
     }
   }
-  std::string _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
+  string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
   retStr = _strLhs + "=" + _strRhs + ";";
   retStr.insert(0, g_indent_width, ' ');
   _contrib.etype = _etype;
@@ -511,7 +511,7 @@ resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIt
     vpiHandle scan_handle;
     int idx=0, size = vpi_get (vpiSize, iterator);
     int cnt = 1;
-    std::vector<std::string> _args;
+    strVec _args;
     _strType = (char *) vpi_get_str (vpiName, vaSpecialItems.objPended);
     std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
     assert(_strType == "DDT");
@@ -541,16 +541,16 @@ resolve_block_contrib(vpiHandle obj, std::string& retStr, vaElement& vaSpecialIt
 }
 
 //Main C code generation for VA statements
-std::string
+string_t
 vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
 {
-  std::string _retStr="";
+  string_t _retStr="";
   while (obj)
     {
       int cur_obj_type = (int) vpi_get (vpiType, obj);
       if(cur_obj_type != vpiModule && cur_obj_type != vpiAnalogFunction)
       {
-        std::string strline = (char *) vpi_get_str (vpiDecompile, obj);
+        string_t strline = (char *) vpi_get_str (vpiDecompile, obj);
 	if (strline.size()) 
         {
           assert(cur_obj_type != vpiIterator);
@@ -729,21 +729,21 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
       {
         vaSpecialItems.m_resolvedCcodes.push_back("/*starts of Analog function*/");
         //get the function name with reture type
-        std::string anlogFuncName = (char *)vpi_get_str (vpiName, obj_scan);
-        std::string anlogFuncType = (char *)vpi_get_str (vpiFuncType, obj_scan);
+        string_t anlogFuncName = (char *)vpi_get_str (vpiName, obj_scan);
+        string_t anlogFuncType = (char *)vpi_get_str (vpiFuncType, obj_scan);
         if(anlogFuncType == "real" or anlogFuncType == "integer") //TODO for more types
           anlogFuncType = va_c_expr_map[anlogFuncType];
         vaSpecialItems.m_analogFuncNames.push_back(anlogFuncName);
 
         //get the arguments of AnalogFunction
-        std::vector <std::string> analogFuncIOdef;
+        strVec analogFuncIOdef;
         set_vec_iteration_by_name(obj_scan, vpiIODecl, 
             analogFuncIOdef, vaSpecialItems);
 
         set_map_iteration_by_name(obj_scan, vpiVariables, 
             vaSpecialItems.m_analogFuncVars, vaSpecialItems);
-        std::string s_analogFuncIOdef= concat_vector2string(analogFuncIOdef,",");
-        std::pair <std::string, std::string> anaFuncDefs = 
+        string_t s_analogFuncIOdef= concat_vector2string(analogFuncIOdef,",");
+        strPair anaFuncDefs = 
           getAnalogFuncArgDef(s_analogFuncIOdef, vaSpecialItems.m_analogFuncVars);
 
         //get function definition: <type> <func_name>(args list)
@@ -753,7 +753,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         vaSpecialItems.m_resolvedCcodes.push_back("{\n");
 
         //get function variables inside: <type1> vars list
-        std::string _funcVars=anaFuncDefs.second;
+        string_t _funcVars=anaFuncDefs.second;
         vaSpecialItems.m_resolvedCcodes.push_back(_funcVars);
 
         //get other vpiStmt with analog function block
@@ -784,20 +784,20 @@ vpi_gen_ccode (vpiHandle obj)
   vaElement vaSpecialEntries;
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
   std::cout << "=====Final C codes=====" << std::endl;
-  for (std::vector < std::string >::iterator it = vaSpecialEntries.m_resolvedCcodes.begin (); 
+  for (strVec::iterator it = vaSpecialEntries.m_resolvedCcodes.begin (); 
       it != vaSpecialEntries.m_resolvedCcodes.end (); ++it)
   {
     std::cout << *it;
     if((*it)[(*it).size()-1] != '\n')
       std::cout << std::endl;
   }
-  std::map < std::string, std::vector<std::string> > mpars = vaSpecialEntries.m_params;
-  for (std::map < std::string, std::vector<std::string> >::iterator it = mpars.begin (); it != mpars.end (); ++it)
+  dictStrVec  mpars = vaSpecialEntries.m_params;
+  for (dictStrVec::iterator it = mpars.begin (); it != mpars.end (); ++it)
     {
       //resolve reference parameter's value
       if (mpars.find (it->second[0]) != mpars.end ())
 	{
-          std::string key = it->second[0];
+          string_t key = it->second[0];
 	  mpars[it->first] = mpars[it->second[0]];
 	  std::cout << "key: " << it-> first << " value : " << it->second[0]
             << " (resolved from " << key << ")" << std::endl;
