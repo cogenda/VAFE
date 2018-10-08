@@ -25,9 +25,10 @@ int vpi_gen_ccode (vpiHandle obj);
 #include <algorithm>
 #include <iomanip>
 typedef std::string string_t;
-typedef std::pair< std::string, std::string > strPair;
-typedef std::vector < std::string > strVec;
-typedef std::map < std::string, strVec > dictStrVec;
+typedef std::pair< string_t, string_t > strPair;
+typedef std::vector < string_t > strVec;
+typedef std::map < string_t, strVec > dictStrVec;
+typedef std::map < string_t, string_t > strDict;
 
 const int N_VARS_PER_COL=12;
 const int INDENT_UNIT=2;
@@ -38,7 +39,7 @@ std::map < int, string_t > va_c_type_map = {
   {vpiIntegerVar, "int"},
 };
 
-std::map < string_t, string_t > va_c_expr_map = {
+strDict va_c_expr_map = {
   {"ln",    "log"},
   {"log",   "log10"},
   {"sqrt",  "sqrt"},
@@ -51,6 +52,20 @@ std::map < string_t, string_t > va_c_expr_map = {
   {"$limit", "_LIMIT_"},
   {"$temperature", "_TEMPER_"},
   {"$strobe", "_STROBE_"},
+};
+
+strDict va_spice_unit_map = {
+  {"T",     "e12"},
+  {"G",     "e9"},
+  {"M",     "e6"}, //alias for MEG
+  {"K",     "e3"},
+  {"k",     "e3"},
+  {"m",     "e-3"},
+  {"u",     "e-6"},
+  {"n",     "e-9"},
+  {"p",     "e-12"},
+  {"f",     "e-15"},
+  {"a",     "e-18"},
 };
 
 typedef enum _objSelection {
@@ -178,6 +193,7 @@ typedef struct _vaElement {
   dictStrVec m_analogFuncVars;
   dictStrVec m_moduleVars;
   dictStrVec m_params;
+  dictStrVec m_branches;
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
   strVec m_modulePorts;    
@@ -296,6 +312,19 @@ str_split(const string_t& line, const char token1, const char token2)
   return subArray;
 }
 
+void
+str_convert_unit(string_t& src)
+{
+  for(strDict::iterator itmap = va_spice_unit_map.begin (); 
+        itmap != va_spice_unit_map.end (); ++itmap)
+  {
+    string_t subkey = itmap->first;
+    int pos=src.find_first_of(subkey);
+    if(pos != (int)string_t::npos)
+      src.replace(pos, subkey.size(), va_spice_unit_map[subkey]);
+  }
+}
+
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
     dictStrVec& analogFuncVars)
@@ -346,7 +375,7 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
 {
-  unsigned i=0;
+  unsigned int i=0;
   for(typename std::map<T, std::vector<T> >::iterator itmap = moduleVars.begin (); 
         itmap != moduleVars.end (); ++itmap)
   {
@@ -439,6 +468,13 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
             container[_params[0]].push_back(*it);
         }
         break;
+      case vpiBranch:
+        {
+          strVec _params = str_split(_retString,',',' ');
+          for(strVec::iterator it=_params.begin()+1; it != _params.end(); ++it)
+            container[_params[0]].push_back(*it);
+        }
+        break;
       default:
         std::cout << "No supported type!" << std::endl;
         break;
@@ -452,6 +488,5 @@ void CgenHeader( vpiHandle root);
 void CgenImplement( vpiHandle root);
 int vpi_gen_ccode (vpiHandle obj);
 #endif
-
 
 #endif

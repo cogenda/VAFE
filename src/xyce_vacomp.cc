@@ -289,11 +289,29 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
   if(_strName == "DDT")  //Only process ddt
     retStr = "0.0";
   else
+  {
+    std::cout << "Warn Analog Filter Function Call:" << _strName << " not supported yet!" <<std::endl;
     return;
+  }
   //set flag
   vaSpecialItems.current_scope = VA_ContribWithFilterFunc;
   vaSpecialItems.objPended = obj;
   return;
+}
+
+//For branch definition (alias)
+void
+resolve_block_branchDef(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
+{
+  //get positive/negative node name for the branch
+  string_t branchName = (char *)vpi_get_str(vpiName, obj);
+  vpiHandle objPosNode = vpi_handle(vpiPosNode, obj);
+  vpiHandle objNegNode = vpi_handle(vpiNegNode, obj);
+  strVec nodes;
+  nodes.push_back(branchName);
+  nodes.push_back(vpi_resolve_expr_impl (objPosNode, vaSpecialItems));
+  nodes.push_back(vpi_resolve_expr_impl (objNegNode, vaSpecialItems));
+  retStr = concat_vector2string(nodes, ",");
 }
 
 //For V/I probing fucntion call: V(a,c), I(d,s),...
@@ -376,6 +394,7 @@ resolve_block_operation(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
       else if(opType == vpiNotOp)
         retStr += "!";
       retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
+      retStr = str_strip(retStr, " ", 2);  //strip the right space chars
       if(idx != size-1) {
       //binary OPs
         if(opType == vpiAddOp)
@@ -446,7 +465,7 @@ resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecial
     vpiHandle objStmt = vpi_handle(vpiStmt, obj);  
     string_t _retStr="/*The initial_step block stars...*/\n";
     _retStr.insert(0, g_indent_width, ' ');
-    retStr += _retStr;
+    retStr = _retStr;
     _retStr = vpi_resolve_expr_impl (objStmt, vaSpecialItems);
     retStr += _retStr;
     _retStr="/*The initial_step block ends...*/\n";
@@ -457,7 +476,7 @@ resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecial
   }
   else
   {
-    std::cout << "Warn Event type:" << _OP_type << " not supported yet!" <<std::endl;
+    std::cout << "Warn Not supported event expression:\n`" << retStr << "'" <<std::endl;
     return;
   }
 }
@@ -491,8 +510,18 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     {
       _retStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);     
       //make sure the args in V/I(arg1,args,..) within Module Net set
-      assert(item_exists(vaSpecialItems.m_moduleNets,_retStr));
-      nodes.push_back(_retStr);
+      assert(item_exists(vaSpecialItems.m_moduleNets,_retStr) 
+          || key_exists(vaSpecialItems.m_branches, _retStr));
+      
+      //resolve the branch name to real nodes
+      if(key_exists(vaSpecialItems.m_branches, _retStr))
+      {
+        strVec _nodes = vaSpecialItems.m_branches[_retStr];
+        for(strVec::iterator it=_nodes.begin(); it != _nodes.end(); ++it)
+          nodes.push_back(*it);
+      }
+      else
+        nodes.push_back(_retStr);
     }
   }
   string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
@@ -575,6 +604,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           {
             resolve_block_branchProbFunCall(obj, _retStr, vaSpecialItems);
           }
+          else if (cur_obj_type == vpiBranch)   //branch defintion
+          {
+            resolve_block_branchDef(obj, _retStr, vaSpecialItems);
+          }
           else if(cur_obj_type == vpiIfElse)
           {
             resolve_block_ifelse(obj, _retStr, vaSpecialItems);
@@ -591,7 +624,12 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
               return strline;
           }
           else if(cur_obj_type == vpiConstant)
-            return strline;
+          {
+            _retStr = strline;
+            int cur_const_type = (int) vpi_get (vpiConstType, obj);
+            if(cur_const_type == vpiRealConst)
+              str_convert_unit(_retStr);
+          }
 
           else if(cur_obj_type == vpiPort || cur_obj_type == vpiNet)
           {
@@ -614,8 +652,8 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           }
           else if(cur_obj_type == vpiFuncCall)
           {
-            //TODO handle HDL func call ...
-            return strline;
+            //TODO handle HDL func call ... e.g., V(in)
+            resolve_block_branchProbFunCall(obj, _retStr, vaSpecialItems);
           }
           else if(cur_obj_type == vpiContrib)
           {
@@ -656,6 +694,7 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == vpiEventControl)
           {
             //handle @(initial_step) ... block
+            _retStr = strline;
             resolve_block_eventControl(obj, _retStr, vaSpecialItems);
           }
 
@@ -701,7 +740,11 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   set_map_iteration_by_name(obj, vpiVariables, vaSpecialItems.m_moduleVars, vaSpecialItems);
   setModuleArgDef(vaSpecialItems.m_moduleArgDef, vaSpecialItems.m_moduleVars);
   vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_moduleArgDef);
-  
+ 
+  //get branch definition if there are some
+  //itr vpiBranch -> obj vpiBranch[n] ->vpiPosNode & vpiNegNode
+  set_map_iteration_by_name(obj, vpiBranch, vaSpecialItems.m_branches, vaSpecialItems);
+
   //get other vpiStmt
   vpiHandle objStmt_itr = vpi_iterate(vpiStmt, obj);
   int size = vpi_get (vpiSize, objStmt_itr);
