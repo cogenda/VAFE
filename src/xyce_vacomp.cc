@@ -290,7 +290,8 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
     retStr = "0.0";
   else
   {
-    std::cout << "Warn Analog Filter Function Call:" << _strName << " not supported yet!" <<std::endl;
+    std::cout << "Error Analog Filter Function Call:`" << _strName << "' not supported yet!" <<std::endl;
+    vaSpecialItems.retFlag = Ret_ERROR;
     return;
   }
   //set flag
@@ -348,6 +349,11 @@ resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
   {
     retStr=va_c_expr_map[anyFuncName] + "(";
   }else{
+    if(anyFuncName[0] == '$')
+    {
+      std::cout << "Error Not supported system function: `" << anyFuncName << "'" <<std::endl;
+      vaSpecialItems.retFlag = Ret_ERROR;
+    }
     retStr=anyFuncName + "(";
   }
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
@@ -476,7 +482,9 @@ resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecial
   }
   else
   {
-    std::cout << "Warn Not supported event expression:\n`" << retStr << "'" <<std::endl;
+    std::cout << "Error Not supported event expression:\n`" << retStr << "'" <<std::endl;
+    vaSpecialItems.retFlag = Ret_ERROR;
+    retStr = "";
     return;
   }
 }
@@ -648,6 +656,12 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             //For various vpiVariables types
             //TODO add more types
           {
+            //check if it's an array
+            if(strline.find('[') != string_t::npos && strline.find(']') != string_t::npos)
+            {
+              std::cout << "Error array variable: " << strline <<" not supported yet!" <<std::endl;
+              vaSpecialItems.retFlag = Ret_ERROR;
+            }
             return strline;
           }
           else if(cur_obj_type == vpiFuncCall)
@@ -716,6 +730,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.current_scope = VA_ModuleTopBlock;
   vaSpecialItems.m_isSrcLinesElseIf = false;
   vaSpecialItems.objPended = 0;
+  vaSpecialItems.retFlag = Ret_NORMAL;
   vpiHandle obj;
   int cur_obj_type = (int) vpi_get (vpiType, root);
   if(cur_obj_type == vpiModule)
@@ -854,7 +869,8 @@ vpi_gen_ccode (vpiHandle obj)
           std::cout << std::endl;
       }
     }
-
+  if(vaSpecialEntries.retFlag > 1)
+    std::cout << "Info: VA compiling failed!" << std::endl;
   return 0;
 }
 

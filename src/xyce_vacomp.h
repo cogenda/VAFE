@@ -173,14 +173,21 @@ typedef enum _vaElectricalType {
   VA_Capacitance
 } vaElectricalType;
 
-typedef enum _vaStates {
+typedef enum _vaState {
   VA_ModuleTopBlock = 0, //0: toplevel exclued module block & other function
   VA_ModuleInitBlock,    //1: @(initial_step)
   VA_AnalogFunctionDef,  //2: analog func block 
   VA_ContribStmt,        //3: Y <+ X_expr stmt (w/o ddt/ddx/...)
                          //4: Y <+ X_expr+ddt/ddx/idt(...)
   VA_ContribWithFilterFunc 
-} vaStates;
+} vaState;
+
+typedef enum _returnFlag {
+  Ret_NORMAL = 0,   //0: normal infor
+  Ret_WARN,         //1: warnings 
+  Ret_ERROR,        //2: Error including not implemented features, failures, etc 
+  Ret_FATAL,        //3: show stoppers, fatal error 
+} returnFlag;
 
 typedef struct _contribElement {
   vaElectricalType etype;
@@ -203,9 +210,10 @@ typedef struct _vaElement {
   strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;
   //current handling va code scope 
-  vaStates current_scope;  
+  vaState current_scope;  
   vpiHandle objPended;
   bool m_isSrcLinesElseIf;    
+  returnFlag retFlag;
 } vaElement;
 
 
