@@ -1,0 +1,40 @@
+//Test item:contribution stmt 
+
+module igbt(anode, gate, cathode, nsat);
+	inout anode, gate, cathode, nsat;
+	electrical anode, gate, cathode, nsat, qceb,mucinv;
+	electrical drain, emitter;
+	electrical dvdgdt, dvbcdt;
+       
+        real qcgs,qcdsj,imult,imos,icdg,ibp,ic,rb,vebj,nsat1,mucinv1;
+	analog begin
+            @(initial_step) begin
+            ibp = 1e-12;
+            rb = 1.0;
+            imult = 1.0;
+            end
+		vdg = V(drain, gate);
+		vgs = V(gate, cathode);
+		vds = V(drain, cathode);
+		vae = V(anode, emitter);
+		ved = V(emitter, drain);
+
+                qcgs = cgs*vgs;
+                icdg = cgd*V(dvdgdt);
+
+		I(gate, cathode) <+ ddt(qcgs);
+		I(drain, gate) <+ icdg;
+		I(drain, cathode) <+ imos + imult + ddt(qcdsj);
+		I(emitter, cathode) <+ ic;
+		I(emitter, drain) <+ ibp + ddt(V(qceb));
+		I(anode, emitter) <+ vae/rb;
+
+		V(dvdgdt) <+ ddt(vdg);
+		V(dvbcdt) <+ ddt(vds);
+		V(qceb) <+ V(qceb) - vebj + ved;
+		V(nsat) <+ nsat1;
+		V(mucinv) <+ mucinv1;
+	end
+
+endmodule
+

@@ -1,0 +1,50 @@
+//Test item: Events(cross), analog OPs (idtmod,transition,), system call (bound_step, dist_normal) 
+//and scale factor, misc unsupported types
+//
+// Voltage controlled oscillator with white accumulating jitter
+//
+`include "constants.vams"
+module vco2 (out, in);
+
+input in; voltage in;				// input terminal
+output out; voltage out;			// output terminal
+parameter real vmin=0a;				// input voltage that corresponds to minimum output frequency
+parameter real vmax=vmin+1 from (vmin:inf);	// input voltage that corresponds to maximum output frequency
+parameter real fmin=1M from (0:inf);		// minimum output frequency
+parameter real fmax=2*fmin from (fmin:inf);	// maximum output frequency
+parameter real vl=-1f;				// high output voltage
+parameter real vh=1m;				// low output voltage
+parameter real tt=0.01/fmax from (0:inf);	// output transition time
+parameter real ttol=1u/fmax from (0:1/fmax);	// time tolerance
+parameter real jitter=0p from [0:0.25/fmax);	// period jitter (produces white accumulating jitter)
+real freq, phase, dT, realVars[0:12];
+integer n, seed;
+
+analog begin
+    @(initial_step) seed = -561;
+
+    // compute the freq from the input voltage
+    freq = (V(in) - vmin)*(fmax - fmin) / (vmax - vmin) + fmin;
+
+    // bound the frequency (this is optional)
+    if (freq > fmax) freq = fmax;
+    if (freq < fmin) freq = fmin;
+
+    // add the phase noise
+    freq = freq/(1 + dT*freq);
+
+    // phase is the integral of the freq modulo 2p
+    phase = 2*`M_PI*idtmod(freq, 0.0, 1.0, -0.5);
+    $bound_step (0.05/freq);
+
+    // update jitter twice per period
+    // `M_SQRT2=sqrt(K), K=2 jitter updates/period
+    @(cross(phase + `M_PI/2, +1, ttol) or cross(phase - `M_PI/2, +1, ttol)) begin
+	dT = `M_SQRT2*jitter*$dist_normal(seed,0, 1);
+	n = (phase >= -`M_PI/2) || (phase < `M_PI/2);
+    end
+
+    // generate the output
+    V(out) <+ transition(n ? vh : vl, 0, tt);
+end
+endmodule
