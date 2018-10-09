@@ -345,9 +345,12 @@ void
 resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t anyFuncName = (char *) vpi_get_str (vpiName, obj);
+  bool is_func_limit = false;
   if(key_exists(va_c_expr_map, anyFuncName))
   {
     retStr=va_c_expr_map[anyFuncName] + "(";
+    if(anyFuncName.find("$limit",0) != string_t::npos)
+      is_func_limit = true;
   }else{
     if(anyFuncName[0] == '$')
     {
@@ -364,7 +367,12 @@ resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
-      retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);                
+      retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);         
+      if(is_func_limit) //for $limit, do nothing and return the 1st arg
+      {
+        retStr += ")";
+        break;
+      }
       if(idx != size-1)
         retStr += ",";
       else
@@ -896,6 +904,12 @@ std::cout <<"#include <N_LAS_Vector.h>" <<std::endl;
 std::cout <<"#include <N_UTL_FeatureTest.h>" <<std::endl;
 std::cout <<"#include <N_UTL_MachDepParams.h>" <<std::endl;
 std::cout <<"#include <N_UTL_Math.h>" <<std::endl;
+std::cout <<"// ---------- Macros Definitions ----------" <<std::endl;
+std::cout <<"#define KOVERQ        8.61734e-05" <<std::endl;
+std::cout <<"#define ELEM          1.0e+20" <<std::endl;
+std::cout <<"#define _VT_ ((ckt->temperature) * KOVERQ)" <<std::endl;
+std::cout <<"#define _TEMPER_ (ckt->temperature)" <<std::endl;
+std::cout <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
 
 }
 

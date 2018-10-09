@@ -49,9 +49,15 @@ strDict va_c_expr_map = {
   {"real",   "double"},
   {"integer","int"},
   {"$vt",    "_VT_"},
-  {"$limit", "_LIMIT_"},
+  {"$limit", ""},  //Not impl
   {"$temperature", "_TEMPER_"},
-  {"$strobe", "_STROBE_"},
+  {"$strobe",  "printf"},
+  {"$display", "printf"},
+  {"$debug",   "printf"},
+  {"$fstrobe", "fprintf"},
+  {"$fopen",   "fopen"},
+  {"$fclose",  "fclose"},
+  {"$limexp",  "_LIMEXP_"},
 };
 
 strDict va_spice_unit_map = {
