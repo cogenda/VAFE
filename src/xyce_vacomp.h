@@ -6,13 +6,6 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
-extern int verbose;
-void CgenHeader(vpiHandle root);
-void CgenImplement(vpiHandle root);
-int vpi_gen_ccode (vpiHandle obj);
-}
-
 #include <assert.h>
 #include <string>
 #include <list>
@@ -24,6 +17,7 @@ int vpi_gen_ccode (vpiHandle obj);
 #include <iostream>
 #include <algorithm>
 #include <iomanip>
+
 typedef std::string string_t;
 typedef std::pair< string_t, string_t > strPair;
 typedef std::vector < string_t > strVec;
@@ -34,45 +28,9 @@ const int N_VARS_PER_COL=12;
 const int INDENT_UNIT=2;
 const string_t g_loopIncVar="__loop_incr_var";
 
-std::map < int, string_t > va_c_type_map = {
-  {vpiRealVar,    "double"},
-  {vpiIntegerVar, "int"},
-};
-
-strDict va_c_expr_map = {
-  {"ln",    "log"},
-  {"log",   "log10"},
-  {"sqrt",  "sqrt"},
-  {"abs",   "fabs"},
-  {"begin", "{"},
-  {"end",   "}"},
-  {"real",   "double"},
-  {"integer","int"},
-  {"$vt",    "_VT_"},
-  {"$limit", ""},  //Not impl
-  {"$temperature", "_TEMPER_"},
-  {"$strobe",  "printf"},
-  {"$display", "printf"},
-  {"$debug",   "printf"},
-  {"$fstrobe", "fprintf"},
-  {"$fopen",   "fopen"},
-  {"$fclose",  "fclose"},
-  {"$limexp",  "_LIMEXP_"},
-};
-
-strDict va_spice_unit_map = {
-  {"T",     "e12"},
-  {"G",     "e9"},
-  {"M",     "e6"}, //alias for MEG
-  {"K",     "e3"},
-  {"k",     "e3"},
-  {"m",     "e-3"},
-  {"u",     "e-6"},
-  {"n",     "e-9"},
-  {"p",     "e-12"},
-  {"f",     "e-15"},
-  {"a",     "e-18"},
-};
+extern std::map < int, string_t > va_c_type_map;
+extern strDict va_c_expr_map;
+extern strDict va_spice_unit_map;
 
 typedef enum _objSelection {
   toplevel = 0,
@@ -223,24 +181,7 @@ typedef struct _vaElement {
 } vaElement;
 
 
-std::map < objSelect, std::pair<size_t, const enum_description *> > objSelMap = {
-  {toplevel,{sizeof(vpi_srccode_prop)/sizeof(vpi_srccode_prop[0]),    vpi_srccode_prop}},
-  {vaPort,  {sizeof(vpi_port_prop)/sizeof(vpi_port_prop[0]),          vpi_port_prop}},
-  {vaNet,   {sizeof(vpi_net_prop)/sizeof(vpi_net_prop[0]),            vpi_net_prop}},
-  {vaAnaFun,{sizeof(vpi_anafun_prop)/sizeof(vpi_anafun_prop[0]),      vpi_anafun_prop}},
-  {vaVar,   {sizeof(vpi_Var_prop)/sizeof(vpi_Var_prop[0]),            vpi_Var_prop}},
-  {vaParam, {sizeof(vpi_parameter_prop)/sizeof(vpi_parameter_prop[0]),vpi_parameter_prop}},
-  {vaCondition, {sizeof(vpi_condition_prop)/sizeof(vpi_condition_prop[0]),vpi_condition_prop}},
-  {vaIf,    {sizeof(vpi_If_prop)/sizeof(vpi_If_prop[0]),vpi_If_prop}},
-  {vaElseIf,{sizeof(vpi_ElseIf_prop)/sizeof(vpi_ElseIf_prop[0]),vpi_ElseIf_prop}},
-  {vaElse,  {sizeof(vpi_Else_prop)/sizeof(vpi_Else_prop[0]),vpi_Else_prop}},
-};
-
-std::pair <size_t, const enum_description *>& 
-getObjSelInfo(objSelect objSel)
-{
-  return objSelMap[objSel];
-}
+extern std::map < objSelect, std::pair<size_t, const enum_description *> > objSelMap;
 
 //search Ta in T which is typex <Ta>
 template<typename T, typename Ta> 
@@ -275,116 +216,21 @@ bool item_exists(const T& vcontainer, const Key& x)
 
 //To check if a std::string `src stars with `targ
 bool
-str_startswith(const string_t& src, const string_t& targ)
-{
-if(src.substr(0, targ.size()) == targ)
-  return true;
-else
-  return false;
-}
+str_startswith(const string_t& src, const string_t& targ);
 
+//string strip, mode =0: trip both side; 1 left side; 2 right side
 string_t 
-str_strip(const string_t s, const string_t chars=" ", int mode=0)
-  //mode =0: trip both side; 1 left side; 2 right side
-{
-  size_t begin = 0;
-  size_t end = s.size()-1;
-  if(mode == 0 || mode == 1)
-  {
-    for(; begin < s.size(); begin++)
-      if(chars.find_first_of(s[begin]) == string_t::npos)
-        break;
-  }
-  if(mode == 0 || mode == 2)
-  {
-    for(; end > begin; end--)
-      if(chars.find_first_of(s[end]) == string_t::npos)
-        break;
-  }
-  return s.substr(begin, end-begin+1);
-}
+str_strip(const string_t s, const string_t chars, int mode);
 
 //split a string into a vector by token1 and token2
 strVec
-str_split(const string_t& line, const char token1, const char token2)
-{
-  strVec subArray;
-  int len = line.length();
-  for (int j = 0, k = 0; j < len; j++) {
-      if (line[j] == token1 || line[j] == token2) {
-          string_t ch = line.substr(k, j - k);
-          k = j+1;
-          if(ch.size()>0)
-            subArray.push_back(ch);
-      }
-      if (j == len - 1) {
-          string_t ch = line.substr(k, j - k+1);
-          if(ch.size()>0)
-            subArray.push_back(ch);
-      }
-  }
-  return subArray;
-}
+str_split(const string_t& line, const char token1, const char token2);
 
-void
-str_convert_unit(string_t& src)
-{
-  for(strDict::iterator itmap = va_spice_unit_map.begin (); 
-        itmap != va_spice_unit_map.end (); ++itmap)
-  {
-    string_t subkey = itmap->first;
-    int pos=src.find_first_of(subkey);
-    if(pos != (int)string_t::npos)
-      src.replace(pos, subkey.size(), va_spice_unit_map[subkey]);
-  }
-}
+void str_convert_unit(string_t& src);
 
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
-    dictStrVec& analogFuncVars)
-{
-  strVec res = str_split(analogFuncArgs, ',', ' ');
-  string_t strArgDef("");
-  string_t strFuncVarDef("");
-  unsigned int cnt_arg = 0, idx_var=0;
-  if(res.size() >0 && res[0] == "input")  //remove the leading keyword `input'
-    res.erase(res.begin ());
-  
-  //search key in map to find the var's type
-  for (dictStrVec::iterator itMap = analogFuncVars.begin (); 
-      itMap != analogFuncVars.end (); ++itMap)
-  {
-    idx_var = 0;
-    for (strVec::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
-    {
-      if (find_item_container(res, *itVar))
-        //if the key matches arg 
-      {
-        strArgDef += itMap->first + " " + *itVar;
-        strArgDef += ",";
-        cnt_arg += 1;
-      }
-      else
-        //Not match into vars list
-      {
-        if(idx_var == 0)
-          strFuncVarDef += itMap->first + " ";
-        strFuncVarDef += *itVar;
-        if (itVar != itMap->second.end()-1)
-          strFuncVarDef += ",";
-        else
-          strFuncVarDef += ";\n";
-        idx_var += 1;
-      }
-    }
-  }
-  assert(cnt_arg == res.size());
-  //remove the tail ',' in args list
-  if(strArgDef[strArgDef.size()-1] == ',')
-    strArgDef.erase(strArgDef.size()-1, 1); 
-  strPair _anaFuncDefs = {strArgDef,strFuncVarDef};
-  return _anaFuncDefs;
-}
+    dictStrVec& analogFuncVars);
 
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
@@ -496,11 +342,16 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
     }
   }  
 }
+extern "C" {
+extern int verbose;
+void CgenHeader(vaElement& vaElem);
+void CgenImplement(vaElement& vaElem);
+void vpi_gen_ccode (vpiHandle obj, vaElement& vaElem);
+void CxxGenFiles (vpiHandle root);
+}
 
 #else
-void CgenHeader( vpiHandle root);
-void CgenImplement( vpiHandle root);
-int vpi_gen_ccode (vpiHandle obj);
+void CxxGenFiles (vpiHandle root);
 #endif
 
 #endif

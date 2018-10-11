@@ -67,8 +67,7 @@ int xvpi_recurs_elabrate(D_ParseNode *pn, const char *key)
 //switch-case block
 void cpp_generate_from_vpi(vpiHandle root)
 {
-  CgenHeader(root);
-  CgenImplement(root);
+  CxxGenFiles(root);
 }
 
 int xvpi_elaborate (void)

@@ -27,7 +27,7 @@ all : $(EXE)
 release: $(EXE)
 	@mkdir -p ../bin && cp -f $(EXE) ../bin/
 
-$(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o  xyce_vacomp.o ../3rdparty/lib/libdparse.a
+$(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o  xyce_vacomp.o xyce_cxxgen.o ../3rdparty/lib/libdparse.a
 	@echo "LINK: $@"
 	@$(CXX) $(LDFLAGS) -o $@ $^
 

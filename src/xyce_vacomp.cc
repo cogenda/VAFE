@@ -7,6 +7,173 @@
 
 static int g_indent_width=0;
 static int g_incr_idx=0;
+strDict va_c_expr_map = {
+  {"ln",    "log"},
+  {"log",   "log10"},
+  {"sqrt",  "sqrt"},
+  {"abs",   "fabs"},
+  {"begin", "{"},
+  {"end",   "}"},
+  {"real",   "double"},
+  {"integer","int"},
+  {"$vt",    "_VT_"},
+  {"$limit", ""},  //Not impl
+  {"$temperature", "_TEMPER_"},
+  {"$strobe",  "printf"},
+  {"$display", "printf"},
+  {"$debug",   "printf"},
+  {"$fstrobe", "fprintf"},
+  {"$fopen",   "fopen"},
+  {"$fclose",  "fclose"},
+  {"$limexp",  "_LIMEXP_"},
+};
+std::map < int, string_t > va_c_type_map = {
+  {vpiRealVar,    "double"},
+  {vpiIntegerVar, "int"},
+};
+strDict va_spice_unit_map = {
+  {"T",     "e12"},
+  {"G",     "e9"},
+  {"M",     "e6"}, //alias for MEG
+  {"K",     "e3"},
+  {"k",     "e3"},
+  {"m",     "e-3"},
+  {"u",     "e-6"},
+  {"n",     "e-9"},
+  {"p",     "e-12"},
+  {"f",     "e-15"},
+  {"a",     "e-18"},
+};
+std::map < objSelect, std::pair<size_t, const enum_description *> > objSelMap = {
+  {toplevel,{sizeof(vpi_srccode_prop)/sizeof(vpi_srccode_prop[0]),    vpi_srccode_prop}},
+  {vaPort,  {sizeof(vpi_port_prop)/sizeof(vpi_port_prop[0]),          vpi_port_prop}},
+  {vaNet,   {sizeof(vpi_net_prop)/sizeof(vpi_net_prop[0]),            vpi_net_prop}},
+  {vaAnaFun,{sizeof(vpi_anafun_prop)/sizeof(vpi_anafun_prop[0]),      vpi_anafun_prop}},
+  {vaVar,   {sizeof(vpi_Var_prop)/sizeof(vpi_Var_prop[0]),            vpi_Var_prop}},
+  {vaParam, {sizeof(vpi_parameter_prop)/sizeof(vpi_parameter_prop[0]),vpi_parameter_prop}},
+  {vaCondition, {sizeof(vpi_condition_prop)/sizeof(vpi_condition_prop[0]),vpi_condition_prop}},
+  {vaIf,    {sizeof(vpi_If_prop)/sizeof(vpi_If_prop[0]),vpi_If_prop}},
+  {vaElseIf,{sizeof(vpi_ElseIf_prop)/sizeof(vpi_ElseIf_prop[0]),vpi_ElseIf_prop}},
+  {vaElse,  {sizeof(vpi_Else_prop)/sizeof(vpi_Else_prop[0]),vpi_Else_prop}},
+};
+
+std::pair <size_t, const enum_description *>& 
+getObjSelInfo(objSelect objSel)
+{
+  return objSelMap[objSel];
+}
+
+bool
+str_startswith(const string_t& src, const string_t& targ)
+{
+if(src.substr(0, targ.size()) == targ)
+  return true;
+else
+  return false;
+}
+
+string_t 
+str_strip(const string_t s, const string_t chars=" ", int mode=0)
+  //mode =0: trip both side; 1 left side; 2 right side
+{
+  size_t begin = 0;
+  size_t end = s.size()-1;
+  if(mode == 0 || mode == 1)
+  {
+    for(; begin < s.size(); begin++)
+      if(chars.find_first_of(s[begin]) == string_t::npos)
+        break;
+  }
+  if(mode == 0 || mode == 2)
+  {
+    for(; end > begin; end--)
+      if(chars.find_first_of(s[end]) == string_t::npos)
+        break;
+  }
+  return s.substr(begin, end-begin+1);
+}
+
+//split a string into a vector by token1 and token2
+strVec
+str_split(const string_t& line, const char token1, const char token2)
+{
+  strVec subArray;
+  int len = line.length();
+  for (int j = 0, k = 0; j < len; j++) {
+      if (line[j] == token1 || line[j] == token2) {
+          string_t ch = line.substr(k, j - k);
+          k = j+1;
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+      if (j == len - 1) {
+          string_t ch = line.substr(k, j - k+1);
+          if(ch.size()>0)
+            subArray.push_back(ch);
+      }
+  }
+  return subArray;
+}
+
+void
+str_convert_unit(string_t& src)
+{
+  for(strDict::iterator itmap = va_spice_unit_map.begin (); 
+        itmap != va_spice_unit_map.end (); ++itmap)
+  {
+    string_t subkey = itmap->first;
+    int pos=src.find_first_of(subkey);
+    if(pos != (int)string_t::npos)
+      src.replace(pos, subkey.size(), va_spice_unit_map[subkey]);
+  }
+}
+
+strPair
+getAnalogFuncArgDef(string_t& analogFuncArgs, 
+    dictStrVec& analogFuncVars)
+{
+  strVec res = str_split(analogFuncArgs, ',', ' ');
+  string_t strArgDef("");
+  string_t strFuncVarDef("");
+  unsigned int cnt_arg = 0, idx_var=0;
+  if(res.size() >0 && res[0] == "input")  //remove the leading keyword `input'
+    res.erase(res.begin ());
+  
+  //search key in map to find the var's type
+  for (dictStrVec::iterator itMap = analogFuncVars.begin (); 
+      itMap != analogFuncVars.end (); ++itMap)
+  {
+    idx_var = 0;
+    for (strVec::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
+    {
+      if (find_item_container(res, *itVar))
+        //if the key matches arg 
+      {
+        strArgDef += itMap->first + " " + *itVar;
+        strArgDef += ",";
+        cnt_arg += 1;
+      }
+      else
+        //Not match into vars list
+      {
+        if(idx_var == 0)
+          strFuncVarDef += itMap->first + " ";
+        strFuncVarDef += *itVar;
+        if (itVar != itMap->second.end()-1)
+          strFuncVarDef += ",";
+        else
+          strFuncVarDef += ";\n";
+        idx_var += 1;
+      }
+    }
+  }
+  assert(cnt_arg == res.size());
+  //remove the tail ',' in args list
+  if(strArgDef[strArgDef.size()-1] == ',')
+    strArgDef.erase(strArgDef.size()-1, 1); 
+  strPair _anaFuncDefs = {strArgDef,strFuncVarDef};
+  return _anaFuncDefs;
+}
 
 //For parameter stmt, get value and range concat with '='
 void 
@@ -843,11 +1010,10 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   return 0;
 }
 
-int
-vpi_gen_ccode (vpiHandle obj)
+void
+vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
 {
   // process src lines
-  vaElement vaSpecialEntries;
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
   std::cout << "=====Final C codes=====" << std::endl;
   for (strVec::iterator it = vaSpecialEntries.m_resolvedCcodes.begin (); 
@@ -879,54 +1045,20 @@ vpi_gen_ccode (vpiHandle obj)
     }
   if(vaSpecialEntries.retFlag > 1)
     std::cout << "Info: VA compiling failed!" << std::endl;
-  return 0;
+  return;
 }
 
-void CgenIncludeFiles()
-{
-std::cout << "//-------------------------------------------------------------------------" <<std::endl;
-std::cout << "#include <Xyce_config.h>" <<std::endl;
-std::cout << std::endl;
-std::cout <<"// ---------- Standard Includes ----------" <<std::endl;
-std::cout << std::endl;
-std::cout <<"// ----------   Xyce Includes   ----------" <<std::endl;
-std::cout <<"#include <N_DEV_Const.h>" <<std::endl;
-std::cout <<"#include <N_DEV_DeviceOptions.h>" <<std::endl;
-std::cout <<"#include <N_DEV_ExternData.h>" <<std::endl;
-std::cout <<"#include <N_DEV_MOSFET1.h>" <<std::endl;
-std::cout <<"#include <N_DEV_MOSFET_B4.h>" <<std::endl;
-std::cout <<"#include <N_DEV_MatrixLoadData.h>" <<std::endl;
-std::cout <<"#include <N_DEV_Message.h>" <<std::endl;
-std::cout <<"#include <N_DEV_SolverState.h>" <<std::endl;
-std::cout <<"#include <N_ERH_ErrorMgr.h>" <<std::endl;
-std::cout <<"#include <N_LAS_Matrix.h>" <<std::endl;
-std::cout <<"#include <N_LAS_Vector.h>" <<std::endl;
-std::cout <<"#include <N_UTL_FeatureTest.h>" <<std::endl;
-std::cout <<"#include <N_UTL_MachDepParams.h>" <<std::endl;
-std::cout <<"#include <N_UTL_Math.h>" <<std::endl;
-std::cout <<"// ---------- Macros Definitions ----------" <<std::endl;
-std::cout <<"#define KOVERQ        8.61734e-05" <<std::endl;
-std::cout <<"#define ELEM          1.0e+20" <<std::endl;
-std::cout <<"#define _VT_ ((ckt->temperature) * KOVERQ)" <<std::endl;
-std::cout <<"#define _TEMPER_ (ckt->temperature)" <<std::endl;
-std::cout <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
-
-}
 
 void
-CgenHeader (vpiHandle root)
+CxxGenFiles (vpiHandle root)
 {
-  std::cout << "This is a C++ header file !" << std::endl;
-  CgenIncludeFiles();
+  vaElement vaModuleEntries;
   PLI_INT32 vpiObj = vpiModule;
   vpiHandle obj = vpi_iterator_by_index (root, vpiObj);
   vpiHandle topHandle = vpi_handle (vpiObj, obj);
-  vpi_gen_ccode (topHandle);
+  vpi_gen_ccode (topHandle, vaModuleEntries);
+  CgenHeader(vaModuleEntries);
+  CgenImplement(vaModuleEntries);
 }
 
 
-void
-CgenImplement (vpiHandle root)
-{
-  std::cout << "This is a C++ Main file of Implementation!" << std::endl;
-}
