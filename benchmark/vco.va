@@ -1,9 +1,31 @@
 //Test item: Events(cross), analog OPs (idtmod,transition,), system call (bound_step, dist_normal) 
-//and scale factor, misc unsupported types
+//and scale factor, macro function, misc unsupported types
 //
 // Voltage controlled oscillator with white accumulating jitter
 //
 `include "constants.vams"
+`define BSIM4NumFingerDiff(nf, minSD, nuIntD, nuEndD, nuIntS, nuEndS)\
+    if ((nf%2) != 0) begin \
+        nuEndD = 1.0; \
+        nuEndS = 1.0; \
+        nuIntD = 2.0 * max((nf - 1.0) / 2.0, 0.0); \
+        nuIntS = nuIntD; \
+    end \
+    else begin \
+        if (minSD == 1) begin \
+            nuEndD = 2.0; \
+            nuIntD = 2.0 * max((nf / 2.0 - 1.0), 0.0);\
+            nuEndS = 0.0;\
+            nuIntS = nf;\
+        end\
+        else begin\
+            nuEndD = 0.0;\
+            nuIntD = nf;\
+            nuEndS = 2.0;\
+            nuIntS = 2.0 * max((nf / 2.0 - 1.0), 0.0);\
+        end \
+    end
+
 module vco2 (out, in);
 
 input in; voltage in;				// input terminal
@@ -32,6 +54,7 @@ analog begin
 
     // add the phase noise
     freq = freq/(1 + dT*freq);
+    `BSIM4NumFingerDiff(freq, phase, dT,fmax,vmin,vmax)
 
     // phase is the integral of the freq modulo 2p
     phase = 2*`M_PI*idtmod(freq, 0.0, 1.0, -0.5);
@@ -46,5 +69,16 @@ analog begin
 
     // generate the output
     V(out) <+ transition(n ? vh : vl, 0, tt);
+    $strobe("T0,T1=", T0, T1);
+    $strobe( "Temperature effect has caused cjsw to be negative. \
+              Cjsw is clamped to zero.\n");
+
+    //Not support with continued slash line at the tail
+    $strobe("ps,pd,ad,as(given):",BSIM4Pseff,BSIM4sourcePerimeter,BSIM4sourcePerimeterGiven, 
+                  BSIM4Pdeff,BSIM4drainPerimeter,BSIM4drainPerimeterGiven, 
+                  BSIM4Adeff,BSIM4drainArea,BSIM4drainAreaGiven, 
+                  BSIM4Aseff,BSIM4sourceArea,BSIM4sourceAreaGiven);
+
+
 end
 endmodule
