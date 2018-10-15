@@ -18,11 +18,19 @@
 #include <algorithm>
 #include <iomanip>
 
+#define INSERT_EMPTY_LINE(h) h << std::endl
+#define UNDEF "N/A"
+
+struct _dependTargInfo;
+struct _valueRange;
 typedef std::string string_t;
 typedef std::pair< string_t, string_t > strPair;
 typedef std::vector < string_t > strVec;
+typedef std::vector < int > intVec;
+typedef std::vector < struct _dependTargInfo > dependVec;
 typedef std::map < string_t, strVec > dictStrVec;
 typedef std::map < string_t, string_t > strDict;
+typedef std::map < string_t, struct _valueRange> paramDict;
 
 const int N_VARS_PER_COL=12;
 const int INDENT_UNIT=2;
@@ -157,13 +165,28 @@ typedef struct _contribElement {
   vaElectricalType etype;
   string_t contrib_lhs;
   string_t contrib_rhs;
-  strVec nodes;
+  strVec nodes;         //a,c for I(a,c) <+ v(a,c)*2 + v(b,c)
+  strVec depend_nodes;  //a,b,c for above contrib
 }contribElement;
+
+typedef struct _dependTargInfo {
+  int lineNo;
+  strVec dependNodes;
+}dependTargInfo;
+
+typedef struct _valueRange {
+  string_t init_value;
+  int lower_Op;      //vpiGeOp, vpiGtOp
+  string_t lower_value;
+  int higher_Op;     //vpiLeOp, vpiLtOp
+  string_t higher_value;
+  bool has_range;
+}valueRange;
 
 typedef struct _vaElement {
   dictStrVec m_analogFuncVars;
   dictStrVec m_moduleVars;
-  dictStrVec m_params;
+  paramDict m_params;
   dictStrVec m_branches;
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
@@ -173,10 +196,13 @@ typedef struct _vaElement {
   string_t m_moduleArgDef;
   strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;
+  std::map < string_t, dependVec > m_dependTargMap;
+  string_t m_moduleName;
   //current handling va code scope 
   vaState current_scope;  
   vpiHandle objPended;
   bool m_isSrcLinesElseIf;    
+  bool m_needProcessDepend;
   returnFlag retFlag;
 } vaElement;
 
@@ -231,6 +257,10 @@ void str_convert_unit(string_t& src);
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
     dictStrVec& analogFuncVars);
+
+strVec
+resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr,
+    vaElement& vaSpecialItems);
 
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
@@ -300,6 +330,16 @@ void set_vec_iteration_by_name(vpiHandle obj, int iter_type, T& container, vaEle
   }  
 }
 
+//extend container by targContainer with unique element
+template<typename T> //container: vector <Tx>
+void insert_vec2vec_unique(T& container, T& targContainer)
+{
+  for(auto it=targContainer.begin(); it != targContainer.end(); ++it)
+  {
+    if(!item_exists(container, *it))
+      container.push_back(*it);
+  }
+}
 
 template<typename T1, typename T2> //container: map <T1, T2>
 void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& container, vaElement &vaSpecialItems)
@@ -321,7 +361,7 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
       case vpiIntegerVar:
         container[va_c_type_map[_type]].push_back(_retString);
         break;
-      case vpiParameter:
+      case vpiParameter:  //Useless codes, using the next `set_map_iteration_by_name
         {
           strVec _params = str_split(_retString,'=',' ');
           for(strVec::iterator it=_params.begin()+1; it != _params.end(); ++it)
@@ -342,10 +382,29 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
     }
   }  
 }
+
+template<typename T1> //container: map <T1, valueRange>
+void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,valueRange>& container, vaElement &vaSpecialItems)
+{
+  vpiHandle iterator = vpi_iterate (iter_type, obj);
+  vpiHandle scan_handle;
+  int idx=0, size = vpi_get (vpiSize, iterator);
+  int cnt = 1;
+  for(idx=0; idx < size; idx++)
+  {
+    if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+    {
+      int _type = (int) vpi_get (vpiType, scan_handle);
+      assert(_type == vpiParameter);
+      string_t _retString = vpi_resolve_expr_impl(scan_handle, vaSpecialItems);
+    }
+  }  
+}
+
 extern "C" {
 extern int verbose;
-void CgenHeader(vaElement& vaElem);
-void CgenImplement(vaElement& vaElem);
+returnFlag CgenHeader(vaElement& vaElem, string_t& fheaderName);
+returnFlag CgenImplement(vaElement& vaElem, string_t& fheaderName);
 void vpi_gen_ccode (vpiHandle obj, vaElement& vaElem);
 void CxxGenFiles (vpiHandle root);
 }

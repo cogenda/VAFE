@@ -4,6 +4,7 @@
  * whose input is from vams AST through D-parser
  */
 #include "xyce_vacomp.h"
+#include "xyce_cxxgen.h"
 
 static int g_indent_width=0;
 static int g_incr_idx=0;
@@ -122,8 +123,8 @@ str_convert_unit(string_t& src)
         itmap != va_spice_unit_map.end (); ++itmap)
   {
     string_t subkey = itmap->first;
-    int pos=src.find_first_of(subkey);
-    if(pos != (int)string_t::npos)
+    auto pos=src.find_first_of(subkey);
+    if(pos != string_t::npos)
       src.replace(pos, subkey.size(), va_spice_unit_map[subkey]);
   }
 }
@@ -175,28 +176,159 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
   return _anaFuncDefs;
 }
 
+//To obtain or create the depend item of the variable with `varName' and line_No
+dependTargInfo& 
+getOrCreate_dependTarg_lineNo(int lineNo, string_t& varName, vaElement& vaSpecialItems)
+{
+  for(auto ivec=vaSpecialItems.m_dependTargMap[varName].begin(); ivec != vaSpecialItems.m_dependTargMap[varName].end(); ++ivec)
+  {
+    if(ivec->lineNo == lineNo)
+      return *(ivec);
+  }
+  dependTargInfo _depTarg;
+  _depTarg.lineNo = lineNo;
+  vaSpecialItems.m_dependTargMap[varName].push_back(_depTarg);
+  return vaSpecialItems.m_dependTargMap[varName].back();
+}
+
+//insert dependent nodes into container `depItem for a given target variable name
+void
+insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem, 
+    vaElement& vaSpecialItems) 
+{
+  string_t tagName = (string_t) vpi_get_str (vpiName, obj);
+  if(key_exists(vaSpecialItems.m_params, tagName)) //ignore model parameter
+    return;
+  if(key_exists(vaSpecialItems.m_dependTargMap, tagName))
+  {
+    for(auto ivec=vaSpecialItems.m_dependTargMap[tagName].begin(); ivec != vaSpecialItems.m_dependTargMap[tagName].end(); ++ivec)
+    {
+      if(ivec->lineNo <= lineNo) //this depend var should appear before current line
+      {
+        //Don't insert duplicated item!
+        insert_vec2vec_unique(depItem.dependNodes, ivec->dependNodes);
+        break;
+      }
+    }
+  }
+  else if(item_exists(vaSpecialItems.m_moduleNets, tagName))
+    //it's a valid node & insert it
+    depItem.dependNodes.push_back(tagName);
+  else
+  {
+    std::cout << str_format("Warn:{} not insert into depend map!\n", tagName);
+  }
+}
+
+//get all dependent unique nodes inside the arguments of any function call
+const intVec funcArgsObjTypes = {vpiArgument, vpiOperand};
+void
+get_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
+    vaElement& vaSpecialItems)
+{
+  for(auto itrType = funcArgsObjTypes.begin(); itrType != funcArgsObjTypes.end(); ++itrType)
+  {
+    vpiHandle iterator = vpi_iterate (*itrType, obj);
+    vpiHandle scan_handle;
+    int idx=0, size = vpi_get (vpiSize, iterator);
+    int cnt = 1;
+    for(idx=0; idx < size; idx++)
+    {
+      if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+      {
+        int _obj_type = (int) vpi_get (vpiType, scan_handle);
+        if(_obj_type == xvpiReference)
+          insert_depNodes_one_targ(scan_handle, lineNo, depItem, vaSpecialItems);
+        else if(_obj_type == vpiConstant)
+          continue;
+        else
+          get_depNodes_func_args (scan_handle, lineNo, depItem, vaSpecialItems);
+      }
+    }
+  }
+}
+
+//insert a depend item for this Lhs if needs
+void
+insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement& vaSpecialItems)
+{
+  if(!vaSpecialItems.m_needProcessDepend)
+    return;
+#if 0
+  bool isExist = false;
+  if( key_exists(vaSpecialItems.m_dependTargMap, varName))
+  {
+    for(auto ivec=vaSpecialItems.m_dependTargMap[varName].begin(); ivec != vaSpecialItems.m_dependTargMap[varName].end(); ++ivec)
+    {
+      if(ivec->lineNo == lineNo && ivec->dependNodes.size()) //already has this item, do nothing
+      {
+        isExist = true;
+        return;
+      }
+    }
+  }
+  assert(isExist == false);
+#endif /*0*/
+  int _obj_type = (int) vpi_get (vpiType, objValue);
+  dependTargInfo &depItem = getOrCreate_dependTarg_lineNo(lineNo, varName, vaSpecialItems);
+  string_t _retStr;
+  if (_obj_type == vpiBranchProbeFuncCall ||  //V(a,c)
+      _obj_type == vpiAnalogFuncCall ||       //V(ti), f(vx)
+      _obj_type == vpiFuncCall ||             //diode(v,v2,..)
+      _obj_type == vpiAnalogBuiltinFuncCall ||
+      _obj_type == vpiSysFuncCall ||
+      _obj_type == vpiAnalogSysTaskCall ||
+      _obj_type == vpiAnalogSysFuncCall)
+  {
+    get_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
+    return;
+  }
+  else
+  {
+    //search all Operands in Rhs and get the dependent nodes
+    vpiHandle iterator = vpi_iterate (vpiOperand, objValue);
+    vpiHandle scan_handle;
+    int idx=0, size = vpi_get (vpiSize, iterator);
+    int cnt = 1;
+    for(idx=0; idx < size; idx++)
+    {
+      if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+      {
+        int _subobj_type = (int)vpi_get (vpiType, scan_handle);
+        if(_subobj_type == vpiConstant)  //ignore const var
+          continue;
+        else if(_subobj_type == xvpiReference)
+          insert_depNodes_one_targ(scan_handle, lineNo, depItem, vaSpecialItems);
+        else
+          insert_depend_item(lineNo, varName, scan_handle, vaSpecialItems);
+      }
+    }
+  }
+}
+
 //For parameter stmt, get value and range concat with '='
 void 
 resolve_block_parameters(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  strVec _parValues;
+  valueRange _range;
+  _range.has_range = false;
   string_t parName = (char *) vpi_get_str (vpiName, obj);
-  _parValues.push_back(parName);
   vpiHandle value_handle = vpi_handle(vpiExpr, obj);
-  _parValues.push_back( 
-    str_strip(vpi_resolve_expr_impl (value_handle, vaSpecialItems)));
+  _range.init_value = str_strip(vpi_resolve_expr_impl (value_handle, vaSpecialItems));
   vpiHandle iterator = vpi_iterate (vpiValueRange, obj);
   if(!iterator)
   {
-    retStr = concat_vector2string(_parValues, "=");
+    vaSpecialItems.m_params[parName] = _range;
     return;
   }
+  //processing range `from (a,b)'
+  _range.has_range = true;
   vpiHandle range_handle = vpi_scan_index (iterator, 1);
   iterator = vpi_iterate (vpiExpr,range_handle);
   vpiHandle scan_handle;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1, _obj_type, _OP_type;
-  string_t range_low, range_high, _str;
+  string_t _str;
   assert(size == 2);
   for(idx=0; idx < size; idx++)
   {
@@ -207,17 +339,21 @@ resolve_block_parameters(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
       _str = (char *) vpi_get_str(vpiDecompile,scan_handle);
       if(_obj_type == vpiOperation)
       {
-        if(_OP_type == vpiGeOp)
-          range_low = _str;
-        else if(_OP_type == vpiLeOp)
-          range_high = _str;
+        if(_OP_type == vpiGeOp || _OP_type == vpiGtOp)
+        {
+          _range.lower_Op = _OP_type;
+          _range.lower_value = _str;
+        }
+        else if(_OP_type == vpiLeOp || _OP_type == vpiLtOp)
+        {
+          _range.higher_Op = _OP_type;
+          _range.higher_value = _str;
+        }
       }
     }
   }
-  _parValues.push_back(range_low);
-  _parValues.push_back(range_high);
-  assert(::atof(range_low.c_str()) <= ::atof(range_high.c_str()));
-  retStr = concat_vector2string(_parValues, "=");
+  vaSpecialItems.m_params[parName] = _range;
+  assert(::atof(_range.lower_value.c_str()) <= ::atof(_range.higher_value.c_str()));
 }
 
 //For begin ... end block
@@ -483,12 +619,12 @@ resolve_block_branchDef(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
 }
 
 //For V/I probing fucntion call: V(a,c), I(d,s),...
-void            
+strVec            
 resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
+  int lineNo = (int) vpi_get (vpiLineNo, obj);
   string_t _strType = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
-  assert(_strType == "V" || _strType == "I");
   
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
   vpiHandle scan_handle;
@@ -501,10 +637,30 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
       _retStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);     
-      nodes.push_back(_retStr);
+      if(_strType == "V" || _strType == "I")
+        nodes.push_back(_retStr);
+      else 
+      {
+        //here is analog/system function call
+        if(key_exists(vaSpecialItems.m_dependTargMap, _retStr))
+        {
+          for(auto ivec=vaSpecialItems.m_dependTargMap[_retStr].begin(); ivec != vaSpecialItems.m_dependTargMap[_retStr].end(); ++ivec)
+          {
+            if(ivec->lineNo <= lineNo) //this depend var should appear before current line
+            {
+              nodes.insert(nodes.end(), ivec->dependNodes.begin(), ivec->dependNodes.end());
+              break;
+            }
+          }
+        }
+      }
     }
   }
-  retStr = _strType + "prob_" + concat_vector2string(nodes, "_");
+  if(_strType == "V" || _strType == "I")
+    retStr = _strType + "prob_" + concat_vector2string(nodes, "_");
+  else  //here is analog/system function call
+    retStr = _strType + "(" + concat_vector2string(nodes, ",") + ");";
+  return nodes;
 }
 
 //For any function call: builtin, system, analog function call, etc
@@ -627,6 +783,9 @@ resolve_block_assign(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   vpiHandle objRhs = vpi_handle(vpiRhs, obj);
   string_t _strLhs = vpi_resolve_expr_impl (objLhs, vaSpecialItems);
   string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
+  //insert a depend item for this Lhs if needs
+  int lineNo = (int) vpi_get (vpiLineNo, obj);
+  insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
   if( find_item_container(vaSpecialItems.m_analogFuncNames, _strLhs))
     //replace the 'function-name = Rhs' as 'return Rhs;'
     retStr += "return " + _strRhs + ";";
@@ -906,6 +1065,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.m_isSrcLinesElseIf = false;
   vaSpecialItems.objPended = 0;
   vaSpecialItems.retFlag = Ret_NORMAL;
+  vaSpecialItems.m_needProcessDepend = true;
   vpiHandle obj;
   int cur_obj_type = (int) vpi_get (vpiType, root);
   if(cur_obj_type == vpiModule)
@@ -919,6 +1079,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   else
     assert(0);
 
+  vaSpecialItems.m_moduleName = (char *) vpi_get_str(vpiName, obj);
   //get the port and all nodes info
   set_vec_iteration_by_name(obj, vpiPort, vaSpecialItems.m_modulePorts, vaSpecialItems);
   set_vec_iteration_by_name(obj, vpiNet, vaSpecialItems.m_moduleNets, vaSpecialItems);
@@ -950,6 +1111,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
     }
   }
   //get AnalogFunction block
+  vaSpecialItems.m_needProcessDepend = false;
   objStmt_itr = vpi_iterate(vpiAnalogFunction, obj);
   size = vpi_get (vpiSize, objStmt_itr);
   cnt = 1;
@@ -1023,22 +1185,26 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
     if((*it)[(*it).size()-1] != '\n')
       std::cout << std::endl;
   }
-  dictStrVec  mpars = vaSpecialEntries.m_params;
-  for (dictStrVec::iterator it = mpars.begin (); it != mpars.end (); ++it)
+  paramDict mpars = vaSpecialEntries.m_params;
+  for (paramDict::iterator it = mpars.begin (); it != mpars.end (); ++it)
     {
       //resolve reference parameter's value
-      if (mpars.find (it->second[0]) != mpars.end ())
+      if (mpars.find (it->second.init_value) != mpars.end ())
 	{
-          string_t key = it->second[0];
-	  mpars[it->first] = mpars[it->second[0]];
-	  std::cout << "key: " << it-> first << " value : " << it->second[0]
+          string_t key = it->second.init_value;
+	  mpars[it->first] = mpars[key];
+	  std::cout << "key: " << it-> first << " value : " << it->second.init_value
             << " (resolved from " << key << ")" << std::endl;
 	}
       else
       {
-        std::cout << "key: " << it->first << " value: " << it->second[0];
-        if(it->second.size() == 3)
-          std::cout << " with range [" + it->second[1] + ":" + it->second[2] + "]" << std::endl;
+        std::cout << "key: " << it->first << " value: " << it->second.init_value;
+        if(it->second.has_range)
+        {
+          string_t lower_Op = it->second.lower_Op == vpiGeOp ? "[" : "(";
+          string_t higher_Op = it->second.higher_Op == vpiLeOp ? "]" : ")";
+          std::cout << str_format(" with range {}",lower_Op) + it->second.lower_value + ":" + it->second.higher_value + higher_Op << std::endl;
+        }
         else
           std::cout << std::endl;
       }
@@ -1057,8 +1223,13 @@ CxxGenFiles (vpiHandle root)
   vpiHandle obj = vpi_iterator_by_index (root, vpiObj);
   vpiHandle topHandle = vpi_handle (vpiObj, obj);
   vpi_gen_ccode (topHandle, vaModuleEntries);
-  CgenHeader(vaModuleEntries);
-  CgenImplement(vaModuleEntries);
+  string_t fHppName = str_format("N_DEV_COGENDA_{}.h", vaModuleEntries.m_moduleName);
+  string_t fCxxName = str_format("N_DEV_COGENDA_{}.C", vaModuleEntries.m_moduleName);
+  returnFlag retH,retC;
+  retH = CgenHeader(vaModuleEntries, fHppName);
+  retC = CgenImplement(vaModuleEntries, fCxxName);
+  if(retH > 1 || retC > 1)
+    std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
 
 
