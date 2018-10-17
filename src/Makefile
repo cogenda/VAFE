@@ -12,7 +12,7 @@ LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
 EXE:=vams.exe
-VAfiles:=case.va diode.va ifelse.va operats.va xor2.va contrib.va macro.va vco.va branches.va
+VAfiles:=switchcase.va diode.va ifelse.va operats.va xor2.va contrib.va macro.va vco.va branches.va
 DEBUG ?= 1
 ifeq ($(DEBUG),1)
     CFLAGS += -DDEBUG -ggdb
@@ -57,18 +57,25 @@ vams_parse.c : vams_keyword_lookup.h
 test : $(EXE) 
 	@failed=0 && cd ../benchmark && ln -sf ../src/$(EXE) . && \
 	for vaf in $(VAfiles); do \
+	  vafb=`basename $$vaf .va` && \
 	  if [ -n "$(gengold)" ]; then\
-	    ./$(EXE) $$vaf > ref_$$vaf.log; \
+	    ./$(EXE) $$vaf > ref_$$vafb.log; \
+	    mv N_DEV_COGENDA_$$vafb.h ref_N_DEV_COGENDA_$$vafb.h; \
+	    mv N_DEV_COGENDA_$$vafb.C ref_N_DEV_COGENDA_$$vafb.C; \
 	  else \
-	    ./$(EXE) $$vaf > tag_$$vaf.log; \
-	    ret_diff=`diff ref_$$vaf.log tag_$$vaf.log`; \
-	    if [ -n "$$ret_diff" ]; then \
+	    ./$(EXE) $$vaf > tag_$$vafb.log; \
+	    ret_diff1=`diff ref_$$vafb.log tag_$$vafb.log`; \
+	    ret_diff2=`diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h`; \
+	    ret_diff3=`diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C`; \
+	    if [ -n "$$ret_diff1" -o -n "$$ret_diff2" -o -n "$$ret_diff3" ]; then \
 	      failed=1 && echo "$$vaf failed."; \
 	      if [ -n "$(verbose)" ]; then \
-		diff ref_$$vaf.log tag_$$vaf.log; \
+		diff ref_$$vafb.log tag_$$vafb.log; \
+		diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h`; \
+		diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C`; \
 	      fi \
 	    else \
-	      rm tag_$$vaf.log; \
+	      rm tag_$$vafb.log N_DEV_COGENDA_$$vafb.*; \
 	    fi \
 	  fi \
 	done && \

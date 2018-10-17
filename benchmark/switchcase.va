@@ -3,7 +3,7 @@
 //
 `define EXP_THRESHOLD 1e34
 `define MIN_EXP 1e-29
-module diode(a,c);
+module switchcase(a,c);
    electrical a, c;
    inout a, c;
    parameter real IS = 1.0e-14;

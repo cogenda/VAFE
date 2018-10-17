@@ -1,5 +1,5 @@
 //Test item:if-else block 
-module diode(a,c);
+module ifelse(a,c);
    electrical a, c;
    inout a, c;
    parameter real IS = 1.0e-14;

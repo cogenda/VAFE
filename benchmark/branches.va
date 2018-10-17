@@ -1,6 +1,6 @@
 //Test item:contribution stmt 
 
-module igbt(anode, gate, cathode, nsat);
+module branches(anode, gate, cathode, nsat);
 	inout anode, gate, cathode, nsat;
 	electrical anode, gate, cathode, nsat, qceb,mucinv;
 	electrical drain, emitter;

@@ -5,7 +5,7 @@
 `define	HBAR	0.658095e-15
 `define	PI	3.1415926535897932
 
-module diode(a,c);
+module macro(a,c);
    electrical a, c;
    inout a, c;
    parameter real IS = `EM0;
