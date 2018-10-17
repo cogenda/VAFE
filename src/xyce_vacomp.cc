@@ -183,10 +183,20 @@ getOrCreate_dependTarg_lineNo(int lineNo, string_t& varName, vaElement& vaSpecia
   for(auto ivec=vaSpecialItems.m_dependTargMap[varName].begin(); ivec != vaSpecialItems.m_dependTargMap[varName].end(); ++ivec)
   {
     if(ivec->lineNo == lineNo)
-      return *(ivec);
+      return *ivec;
+    else if(vaSpecialItems.m_needMergDependItem && vaSpecialItems.lineNo_ifelse_case != UNDEF)
+    {
+      return vaSpecialItems.m_dependTargMap[varName].back();
+    }
   }
   dependTargInfo _depTarg;
-  _depTarg.lineNo = lineNo;
+  if(vaSpecialItems.m_needMergDependItem && vaSpecialItems.lineNo_ifelse_case == UNDEF)
+  {
+    _depTarg.lineNo = lineNo;
+    vaSpecialItems.lineNo_ifelse_case = lineNo;
+  }
+  else
+    _depTarg.lineNo = lineNo;
   vaSpecialItems.m_dependTargMap[varName].push_back(_depTarg);
   return vaSpecialItems.m_dependTargMap[varName].back();
 }
@@ -223,7 +233,7 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
 //get all dependent unique nodes inside the arguments of any function call
 const intVec funcArgsObjTypes = {vpiArgument, vpiOperand};
 void
-get_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
+insert_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
     vaElement& vaSpecialItems)
 {
   for(auto itrType = funcArgsObjTypes.begin(); itrType != funcArgsObjTypes.end(); ++itrType)
@@ -242,7 +252,7 @@ get_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
         else if(_obj_type == vpiConstant)
           continue;
         else
-          get_depNodes_func_args (scan_handle, lineNo, depItem, vaSpecialItems);
+          insert_depNodes_func_args (scan_handle, lineNo, depItem, vaSpecialItems);
       }
     }
   }
@@ -254,21 +264,7 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
 {
   if(!vaSpecialItems.m_needProcessDepend)
     return;
-#if 0
-  bool isExist = false;
-  if( key_exists(vaSpecialItems.m_dependTargMap, varName))
-  {
-    for(auto ivec=vaSpecialItems.m_dependTargMap[varName].begin(); ivec != vaSpecialItems.m_dependTargMap[varName].end(); ++ivec)
-    {
-      if(ivec->lineNo == lineNo && ivec->dependNodes.size()) //already has this item, do nothing
-      {
-        isExist = true;
-        return;
-      }
-    }
-  }
-  assert(isExist == false);
-#endif /*0*/
+
   int _obj_type = (int) vpi_get (vpiType, objValue);
   dependTargInfo &depItem = getOrCreate_dependTarg_lineNo(lineNo, varName, vaSpecialItems);
   string_t _retStr;
@@ -280,7 +276,7 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
       _obj_type == vpiAnalogSysTaskCall ||
       _obj_type == vpiAnalogSysFuncCall)
   {
-    get_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
+    insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
     return;
   }
   else
@@ -622,7 +618,6 @@ resolve_block_branchDef(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
 strVec            
 resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  int lineNo = (int) vpi_get (vpiLineNo, obj);
   string_t _strType = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   
@@ -642,17 +637,7 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
       else 
       {
         //here is analog/system function call
-        if(key_exists(vaSpecialItems.m_dependTargMap, _retStr))
-        {
-          for(auto ivec=vaSpecialItems.m_dependTargMap[_retStr].begin(); ivec != vaSpecialItems.m_dependTargMap[_retStr].end(); ++ivec)
-          {
-            if(ivec->lineNo <= lineNo) //this depend var should appear before current line
-            {
-              nodes.insert(nodes.end(), ivec->dependNodes.begin(), ivec->dependNodes.end());
-              break;
-            }
-          }
-        }
+        nodes.push_back(_retStr);
       }
     }
   }
@@ -952,7 +937,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           }
           else if(cur_obj_type == vpiIfElse)
           {
+            vaSpecialItems.m_needMergDependItem = true;
             resolve_block_ifelse(obj, _retStr, vaSpecialItems);
+            vaSpecialItems.m_needMergDependItem = false;
+            vaSpecialItems.lineNo_ifelse_case = UNDEF;
           }
           else if(cur_obj_type == vpiBegin)
           {
@@ -1032,7 +1020,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == vpiCase)
           {
             //handle Case stmt ...
+            vaSpecialItems.m_needMergDependItem = true;
             resolve_block_case(obj, _retStr, vaSpecialItems);
+            vaSpecialItems.m_needMergDependItem = false;
+            vaSpecialItems.lineNo_ifelse_case = UNDEF;
           }
           else if(cur_obj_type == vpiCondition)
           {
@@ -1066,6 +1057,8 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.objPended = 0;
   vaSpecialItems.retFlag = Ret_NORMAL;
   vaSpecialItems.m_needProcessDepend = true;
+  vaSpecialItems.m_needMergDependItem = false;
+  vaSpecialItems.lineNo_ifelse_case = UNDEF;
   vpiHandle obj;
   int cur_obj_type = (int) vpi_get (vpiType, root);
   if(cur_obj_type == vpiModule)
@@ -1122,24 +1115,25 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
       int _obj_type = (int) vpi_get (vpiType, obj_scan);
       if( _obj_type == vpiAnalogFunction)
       {
-        vaSpecialItems.m_resolvedCcodes.push_back("/*starts of Analog function*/");
         //get the function name with reture type
         string_t anlogFuncName = (char *)vpi_get_str (vpiName, obj_scan);
         string_t anlogFuncType = (char *)vpi_get_str (vpiFuncType, obj_scan);
+        vaSpecialItems.m_resolvedCcodes.push_back(str_format("/*starts of Analog function {}*/",anlogFuncName));
         if(anlogFuncType == "real" or anlogFuncType == "integer") //TODO for more types
           anlogFuncType = va_c_expr_map[anlogFuncType];
         vaSpecialItems.m_analogFuncNames.push_back(anlogFuncName);
 
         //get the arguments of AnalogFunction
         strVec analogFuncIOdef;
+        dictStrVec analogFuncVars;
         set_vec_iteration_by_name(obj_scan, vpiIODecl, 
             analogFuncIOdef, vaSpecialItems);
 
         set_map_iteration_by_name(obj_scan, vpiVariables, 
-            vaSpecialItems.m_analogFuncVars, vaSpecialItems);
+            analogFuncVars, vaSpecialItems);
         string_t s_analogFuncIOdef= concat_vector2string(analogFuncIOdef,",");
         strPair anaFuncDefs = 
-          getAnalogFuncArgDef(s_analogFuncIOdef, vaSpecialItems.m_analogFuncVars);
+          getAnalogFuncArgDef(s_analogFuncIOdef, analogFuncVars);
 
         //get function definition: <type> <func_name>(args list)
         vaSpecialItems.m_analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
@@ -1165,7 +1159,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
               vpi_resolve_expr_impl (obj_scan_func, vaSpecialItems));
           }
         }
-        vaSpecialItems.m_resolvedCcodes.push_back("}\n/*ends of Analog function*/");
+        vaSpecialItems.m_resolvedCcodes.push_back(str_format("}\n/*ends of Analog function {}*/",anlogFuncName));
       }
     }
   }

@@ -19,7 +19,7 @@
 #include <iomanip>
 
 #define INSERT_EMPTY_LINE(h) h << std::endl
-#define UNDEF "N/A"
+#define UNDEF -99999
 
 struct _dependTargInfo;
 struct _valueRange;
@@ -203,6 +203,9 @@ typedef struct _vaElement {
   vpiHandle objPended;
   bool m_isSrcLinesElseIf;    
   bool m_needProcessDepend;
+  //merge the depend node list when a LHS within a switch-case or if-else block
+  bool m_needMergDependItem;
+  int lineNo_ifelse_case;
   returnFlag retFlag;
 } vaElement;
 
