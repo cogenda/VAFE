@@ -71,8 +71,8 @@ test : $(EXE)
 	      failed=1 && echo "$$vaf failed."; \
 	      if [ -n "$(verbose)" ]; then \
 		diff ref_$$vafb.log tag_$$vafb.log; \
-		diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h`; \
-		diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C`; \
+		diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h; \
+		diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C; \
 	      fi \
 	    else \
 	      rm tag_$$vafb.log N_DEV_COGENDA_$$vafb.*; \

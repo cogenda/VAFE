@@ -26,6 +26,7 @@ struct _valueRange;
 typedef std::string string_t;
 typedef std::pair< string_t, string_t > strPair;
 typedef std::vector < string_t > strVec;
+typedef std::vector < strPair > strPairVec;
 typedef std::vector < int > intVec;
 typedef std::vector < struct _dependTargInfo > dependVec;
 typedef std::map < string_t, strVec > dictStrVec;
@@ -184,7 +185,6 @@ typedef struct _valueRange {
 }valueRange;
 
 typedef struct _vaElement {
-  dictStrVec m_analogFuncVars;
   dictStrVec m_moduleVars;
   paramDict m_params;
   dictStrVec m_branches;
@@ -192,7 +192,6 @@ typedef struct _vaElement {
   strVec m_resolvedCcodes;    
   strVec m_modulePorts;    
   strVec m_moduleNets;    
-  string_t m_analogFuncArgDef;
   string_t m_moduleArgDef;
   strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;

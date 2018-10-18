@@ -127,10 +127,36 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
     h_outheader << str_format("    int li_branch_i{};", *it) <<std::endl;
   }
   //xyceDeclareJacobianOffsets
-  //Jacobian  pointers
-  //Jacobian offsets
+  strVec fNodePtrs, qNodePtrs, mNodeOffsets;
+  strPairVec _recodNodeMtrix;
+
+  for(auto it=vaModuleEntries.m_contribs.begin(); 
+    it != vaModuleEntries.m_contribs.end(); ++it)
+  {
+    for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
+      for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
+      {
+        strPair nodePair = {*node_row, *node_col};
+        if(item_exists(_recodNodeMtrix, nodePair))
+          continue;
+        else
+          _recodNodeMtrix.push_back(nodePair);
+        //Jacobian  pointers:  double * f|q_bi_Equ_ti_Node_Ptr;
+        fNodePtrs.push_back(str_format("    double * f_{}_Equ_{}_Node_Ptr;", *node_row, *node_col));
+        qNodePtrs.push_back(str_format("    double * q_{}_Equ_{}_Node_Ptr;", *node_row, *node_col));
+        //Jacobian offsets:    int m_bi_Equ_ti_NodeOffset;
+        mNodeOffsets.push_back(str_format("    int m_{}_Equ_{}_NodeOffset;", *node_row, *node_col));
+      }
+  }
+  h_outheader << "    //Jacobian pointers\n";
+  for(auto it=fNodePtrs.begin(); it != fNodePtrs.end(); ++it)
+    h_outheader << *it <<std::endl;
+  for(auto it=qNodePtrs.begin(); it != qNodePtrs.end(); ++it)
+    h_outheader << *it <<std::endl;
   h_outheader << "    //Jacobian Offsets\n";
-  //TODO
+  for(auto it=mNodeOffsets.begin(); it != mNodeOffsets.end(); ++it)
+    h_outheader << *it <<std::endl;
+  
   //xyceDeclareNodeConstants
   h_outheader << "    //Node Constants\n";
   int _idx=0;
