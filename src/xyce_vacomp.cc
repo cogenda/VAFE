@@ -814,6 +814,7 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   vpiHandle objRhs = vpi_handle(vpiRhs, obj);
   string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
   vpiHandle objLhs = vpi_handle(vpiBranch, obj);
+  int lineNo = (int) vpi_get (vpiLineNo, obj);
   vaElectricalType _etype;
   string_t _strType = (char *) vpi_get_str (vpiName, objLhs);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
@@ -858,6 +859,8 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   _contrib.contrib_lhs=_strLhs;
   _contrib.contrib_rhs=_strRhs;
   _contrib.nodes = nodes;
+  insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
+  _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
   vaSpecialItems.m_contribs.push_back(_contrib); 
   //check if there is ddt/ddx
   if(vaSpecialItems.current_scope == VA_ContribWithFilterFunc)
@@ -1056,7 +1059,6 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.m_isSrcLinesElseIf = false;
   vaSpecialItems.objPended = 0;
   vaSpecialItems.retFlag = Ret_NORMAL;
-  vaSpecialItems.m_needProcessDepend = true;
   vaSpecialItems.m_needMergDependItem = false;
   vaSpecialItems.lineNo_ifelse_case = UNDEF;
   vpiHandle obj;
@@ -1072,42 +1074,11 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   else
     assert(0);
 
-  vaSpecialItems.m_moduleName = (char *) vpi_get_str(vpiName, obj);
-  //get the port and all nodes info
-  set_vec_iteration_by_name(obj, vpiPort, vaSpecialItems.m_modulePorts, vaSpecialItems);
-  set_vec_iteration_by_name(obj, vpiNet, vaSpecialItems.m_moduleNets, vaSpecialItems);
-
-  //get the parameters and stored in a map
-  set_map_iteration_by_name(obj, vpiParameter, vaSpecialItems.m_params, vaSpecialItems);
-  
-  //get module level variable definition lines
-  set_map_iteration_by_name(obj, vpiVariables, vaSpecialItems.m_moduleVars, vaSpecialItems);
-  setModuleArgDef(vaSpecialItems.m_moduleArgDef, vaSpecialItems.m_moduleVars);
-  vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_moduleArgDef);
- 
-  //get branch definition if there are some
-  //itr vpiBranch -> obj vpiBranch[n] ->vpiPosNode & vpiNegNode
-  set_map_iteration_by_name(obj, vpiBranch, vaSpecialItems.m_branches, vaSpecialItems);
-
-  //get other vpiStmt
-  vpiHandle objStmt_itr = vpi_iterate(vpiStmt, obj);
+  //process AnalogFunction block
+  vaSpecialItems.m_needProcessDepend = false;
+  vpiHandle obj_scan, objStmt_itr = vpi_iterate(vpiAnalogFunction, obj);
   int size = vpi_get (vpiSize, objStmt_itr);
   int cnt = 1;
-  vpiHandle obj_scan;
-  for(int idx=0; idx < size; idx++)
-  {
-    if((obj_scan = vpi_scan_index (objStmt_itr, cnt++)) != NULL)
-    {
-      //both code into this container
-      vaSpecialItems.m_resolvedCcodes.push_back(
-        vpi_resolve_expr_impl (obj_scan, vaSpecialItems));
-    }
-  }
-  //get AnalogFunction block
-  vaSpecialItems.m_needProcessDepend = false;
-  objStmt_itr = vpi_iterate(vpiAnalogFunction, obj);
-  size = vpi_get (vpiSize, objStmt_itr);
-  cnt = 1;
   for(int idx=0; idx < size; idx++)
   {
     if((obj_scan = vpi_scan_index (objStmt_itr, cnt++)) != NULL)
@@ -1136,9 +1107,9 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
           getAnalogFuncArgDef(s_analogFuncIOdef, analogFuncVars);
 
         //get function definition: <type> <func_name>(args list)
-        vaSpecialItems.m_analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
+        string_t analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
           + "(" + anaFuncDefs.first + ")";
-        vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_analogFuncArgDef);
+        vaSpecialItems.m_resolvedCcodes.push_back(analogFuncArgDef);
         vaSpecialItems.m_resolvedCcodes.push_back("{\n");
 
         //get function variables inside: <type1> vars list
@@ -1147,13 +1118,13 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
 
         //get other vpiStmt with analog function block
         vpiHandle objStmt = vpi_handle(vpiStmt, obj_scan);
-        vpiHandle objStmt_itr = vpi_iterate(vpiStmt, objStmt);
-        int _size = vpi_get (vpiSize, objStmt_itr);
+        vpiHandle objStmt_itr1 = vpi_iterate(vpiStmt, objStmt);
+        int _size = vpi_get (vpiSize, objStmt_itr1);
         int _cnt = 1;
         vpiHandle obj_scan_func;
         for(int idx=0; idx < _size; idx++)
         {
-          if((obj_scan_func = vpi_scan_index (objStmt_itr, _cnt++)) != NULL)
+          if((obj_scan_func = vpi_scan_index (objStmt_itr1, _cnt++)) != NULL)
           {
             vaSpecialItems.m_resolvedCcodes.push_back(
               vpi_resolve_expr_impl (obj_scan_func, vaSpecialItems));
@@ -1161,6 +1132,38 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         }
         vaSpecialItems.m_resolvedCcodes.push_back(str_format("}\n/*ends of Analog function {}*/",anlogFuncName));
       }
+    }
+  }
+  //process module block
+  vaSpecialItems.m_needProcessDepend = true;
+  vaSpecialItems.m_moduleName = (char *) vpi_get_str(vpiName, obj);
+  //get the port and all nodes info
+  set_vec_iteration_by_name(obj, vpiPort, vaSpecialItems.m_modulePorts, vaSpecialItems);
+  set_vec_iteration_by_name(obj, vpiNet, vaSpecialItems.m_moduleNets, vaSpecialItems);
+
+  //get the parameters and stored in a map
+  set_map_iteration_by_name(obj, vpiParameter, vaSpecialItems.m_params, vaSpecialItems);
+  
+  //get module level variable definition lines
+  set_map_iteration_by_name(obj, vpiVariables, vaSpecialItems.m_moduleVars, vaSpecialItems);
+  setModuleArgDef(vaSpecialItems.m_moduleArgDef, vaSpecialItems.m_moduleVars);
+  vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_moduleArgDef);
+ 
+  //get branch definition if there are some
+  //itr vpiBranch -> obj vpiBranch[n] ->vpiPosNode & vpiNegNode
+  set_map_iteration_by_name(obj, vpiBranch, vaSpecialItems.m_branches, vaSpecialItems);
+
+  //get other vpiStmt
+  objStmt_itr = vpi_iterate(vpiStmt, obj);
+  size = vpi_get (vpiSize, objStmt_itr);
+  cnt = 1;
+  for(int idx=0; idx < size; idx++)
+  {
+    if((obj_scan = vpi_scan_index (objStmt_itr, cnt++)) != NULL)
+    {
+      //both code into this container
+      vaSpecialItems.m_resolvedCcodes.push_back(
+        vpi_resolve_expr_impl (obj_scan, vaSpecialItems));
     }
   }
   return 0;
