@@ -8,7 +8,7 @@
 
 static int g_indent_width=0;
 static int g_incr_idx=0;
-strDict va_c_expr_map = {
+sstrDict va_c_expr_map = {
   {"ln",    "log"},
   {"log",   "log10"},
   {"sqrt",  "sqrt"},
@@ -32,7 +32,7 @@ std::map < int, string_t > va_c_type_map = {
   {vpiRealVar,    "double"},
   {vpiIntegerVar, "int"},
 };
-strDict va_spice_unit_map = {
+sstrDict va_spice_unit_map = {
   {"T",     "e12"},
   {"G",     "e9"},
   {"M",     "e6"}, //alias for MEG
@@ -45,6 +45,13 @@ strDict va_spice_unit_map = {
   {"f",     "e-15"},
   {"a",     "e-18"},
 };
+std::map < int, string_t > va_electrical_type_map = {
+  {VA_Flow, "I"},
+  {VA_Potential, "V"},
+  {VA_Charge, "Q"},
+  {VA_Capacitance, "C"},
+};
+
 std::map < objSelect, std::pair<size_t, const enum_description *> > objSelMap = {
   {toplevel,{sizeof(vpi_srccode_prop)/sizeof(vpi_srccode_prop[0]),    vpi_srccode_prop}},
   {vaPort,  {sizeof(vpi_port_prop)/sizeof(vpi_port_prop[0]),          vpi_port_prop}},
@@ -119,7 +126,7 @@ str_split(const string_t& line, const char token1, const char token2)
 void
 str_convert_unit(string_t& src)
 {
-  for(strDict::iterator itmap = va_spice_unit_map.begin (); 
+  for(sstrDict::iterator itmap = va_spice_unit_map.begin (); 
         itmap != va_spice_unit_map.end (); ++itmap)
   {
     string_t subkey = itmap->first;
@@ -129,9 +136,24 @@ str_convert_unit(string_t& src)
   }
 }
 
+//replace key `from to `to in src recursively
+bool
+str_replace_key(string_t& src, const string_t& from, const string_t& to)
+{
+  bool isReplaced = false;
+  auto pos = src.find(from);
+  while(pos!= string_t::npos)
+  {
+    src.replace(pos, from.size(), to);
+    pos = src.find(from);
+    isReplaced = true;
+  }
+  return isReplaced;
+}
+
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
-    dictStrVec& analogFuncVars)
+    sstrVecDict& analogFuncVars)
 {
   strVec res = str_split(analogFuncArgs, ',', ' ');
   string_t strArgDef("");
@@ -141,7 +163,7 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
     res.erase(res.begin ());
   
   //search key in map to find the var's type
-  for (dictStrVec::iterator itMap = analogFuncVars.begin (); 
+  for (sstrVecDict::iterator itMap = analogFuncVars.begin (); 
       itMap != analogFuncVars.end (); ++itMap)
   {
     idx_var = 0;
@@ -222,8 +244,11 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
     }
   }
   else if(item_exists(vaSpecialItems.m_moduleNets, tagName))
-    //it's a valid node & insert it
-    depItem.dependNodes.push_back(tagName);
+  {
+    //it's a valid node & not exists here, insert it
+    if(!item_exists(depItem.dependNodes, tagName))
+      depItem.dependNodes.push_back(tagName);
+  }
   else
   {
     std::cout << str_format("Warn:{} not insert into depend map!\n", tagName);
@@ -274,11 +299,17 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
       _obj_type == vpiAnalogBuiltinFuncCall ||
       _obj_type == vpiSysFuncCall ||
       _obj_type == vpiAnalogSysTaskCall ||
+      _obj_type == vpiAnalogFilterFuncCall ||
+      _obj_type == vpiAnalogSmallSignalFuncCall || //white|flicker_noise(...)
       _obj_type == vpiAnalogSysFuncCall)
   {
+    if(IGNORE_NOISE == 1 && _obj_type == vpiAnalogSmallSignalFuncCall)
+      return;
     insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
     return;
   }
+  else if(_obj_type == xvpiReference)
+    insert_depNodes_one_targ(objValue, lineNo, depItem, vaSpecialItems);
   else
   {
     //search all Operands in Rhs and get the dependent nodes
@@ -615,7 +646,7 @@ resolve_block_branchDef(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
 }
 
 //For V/I probing fucntion call: V(a,c), I(d,s),...
-strVec            
+void
 resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t _strType = (char *) vpi_get_str (vpiName, obj);
@@ -642,10 +673,16 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     }
   }
   if(_strType == "V" || _strType == "I")
+  {
     retStr = _strType + "prob_" + concat_vector2string(nodes, "_");
+    assert(nodes.size() <= 2);
+    if(nodes.size() < 2)
+      nodes.push_back(GND);
+    vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]});
+  }
   else  //here is analog/system function call
     retStr = _strType + "(" + concat_vector2string(nodes, ",") + ");";
-  return nodes;
+  return;
 }
 
 //For any function call: builtin, system, analog function call, etc
@@ -818,10 +855,10 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   vaElectricalType _etype;
   string_t _strType = (char *) vpi_get_str (vpiName, objLhs);
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
-  if(_strType == "V")
-    _etype = VA_Voltage;
-  else if(_strType == "I")
-    _etype = VA_Branch;
+  if(_strType == va_electrical_type_map[VA_Potential])
+    _etype = VA_Potential;
+  else if(_strType == va_electrical_type_map[VA_Flow])
+    _etype = VA_Flow;
   else
     assert(0);
   
@@ -853,9 +890,13 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     }
   }
   string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
-  retStr = _strLhs + "=" + _strRhs + ";";
+  string_t _keytemp = "vpiAnalogSmallSignalFuncCall", _extrComment="";
+  if(str_replace_key(_strRhs, _keytemp, "0.0"))
+    _extrComment = "//smallSignalFuncCall ignored here.";
+  retStr = str_format("{}+={}; {}",_strLhs,_strRhs,_extrComment);
   retStr.insert(0, g_indent_width, ' ');
   _contrib.etype = _etype;
+  _contrib.lineNo = lineNo;
   _contrib.contrib_lhs=_strLhs;
   _contrib.contrib_rhs=_strRhs;
   _contrib.nodes = nodes;
@@ -892,6 +933,8 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.contrib_lhs=_strLhs;
     _contrib.contrib_rhs=_strRhs;
     _contrib.nodes = nodes;
+    insert_depend_item(lineNo, _strLhs, vaSpecialItems.objPended, vaSpecialItems);
+    _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
     vaSpecialItems.m_contribs.push_back(_contrib);     
     //restore the state
     vaSpecialItems.objPended = 0;
@@ -937,6 +980,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if (cur_obj_type == vpiBranch)   //branch defintion
           {
             resolve_block_branchDef(obj, _retStr, vaSpecialItems);
+          }
+          else if(cur_obj_type == vpiAnalogSmallSignalFuncCall) //white|flicker_noise(...)
+          {
+            _retStr = "vpiAnalogSmallSignalFuncCall";
           }
           else if(cur_obj_type == vpiIfElse)
           {
@@ -1096,7 +1143,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
 
         //get the arguments of AnalogFunction
         strVec analogFuncIOdef;
-        dictStrVec analogFuncVars;
+        sstrVecDict analogFuncVars;
         set_vec_iteration_by_name(obj_scan, vpiIODecl, 
             analogFuncIOdef, vaSpecialItems);
 

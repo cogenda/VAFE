@@ -178,7 +178,28 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   //admsProbeID_%(nature)_%(branch/pnode)_%(branch/nnode)"
   //admsProbeID_I_%(pnode)_%(nnode)"
   h_outheader << "    //Probe Constants\n";
-  //TODO
+  _idx=0;
+  {
+    strVec _strVecTmp;
+    string_t _strItem;
+    for(auto it=vaModuleEntries.m_probeConstants.begin(); 
+      it != vaModuleEntries.m_probeConstants.end(); ++it)
+    {
+      //out code: static const int admsProbeID_V_t_ti = 0;
+      string_t etype = it->first;
+      for(auto itv=it->second.begin(); itv != it->second.end(); ++itv)
+      {
+        string_t sn_poi=itv->first, sn_neg=itv->second;
+        _strItem = str_format("    static const int cogendaProbeID_{}_{}_{}", etype, sn_poi, sn_neg, _idx);
+        if(item_exists(_strVecTmp, _strItem))
+          continue;
+        else
+          _strVecTmp.push_back(_strItem);
+        h_outheader << str_format("{} = {};", _strItem, _idx) <<std::endl;
+        _idx += 1;
+      }
+    }
+  }
   //xyceDeclareLimitedProbeStoreLIDs
   h_outheader << "    //Limited Probe Store LIDs\n";
   //TODO

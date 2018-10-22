@@ -18,8 +18,10 @@
 #include <algorithm>
 #include <iomanip>
 
+#define IGNORE_NOISE 1
 #define INSERT_EMPTY_LINE(h) h << std::endl
 #define UNDEF -99999
+#define GND "GND"
 
 struct _dependTargInfo;
 struct _valueRange;
@@ -29,17 +31,19 @@ typedef std::vector < string_t > strVec;
 typedef std::vector < strPair > strPairVec;
 typedef std::vector < int > intVec;
 typedef std::vector < struct _dependTargInfo > dependVec;
-typedef std::map < string_t, strVec > dictStrVec;
-typedef std::map < string_t, string_t > strDict;
+typedef std::map < string_t, strVec > sstrVecDict;
+typedef std::map < string_t, string_t > sstrDict;
 typedef std::map < string_t, struct _valueRange> paramDict;
+typedef std::map < string_t, strPairVec> sstrPairVecDict;
 
 const int N_VARS_PER_COL=12;
 const int INDENT_UNIT=2;
 const string_t g_loopIncVar="__loop_incr_var";
 
 extern std::map < int, string_t > va_c_type_map;
-extern strDict va_c_expr_map;
-extern strDict va_spice_unit_map;
+extern std::map < int, string_t > va_electrical_type_map;
+extern sstrDict va_c_expr_map;
+extern sstrDict va_spice_unit_map;
 
 typedef enum _objSelection {
   toplevel = 0,
@@ -140,8 +144,8 @@ const enum_description
 };
 
 typedef enum _vaElectricalType {
-  VA_Branch = 0,
-  VA_Voltage,
+  VA_Flow = 0,
+  VA_Potential,
   VA_Charge,
   VA_Capacitance
 } vaElectricalType;
@@ -164,6 +168,7 @@ typedef enum _returnFlag {
 
 typedef struct _contribElement {
   vaElectricalType etype;
+  int lineNo;
   string_t contrib_lhs;
   string_t contrib_rhs;
   strVec nodes;         //a,c for I(a,c) <+ v(a,c)*2 + v(b,c)
@@ -185,9 +190,9 @@ typedef struct _valueRange {
 }valueRange;
 
 typedef struct _vaElement {
-  dictStrVec m_moduleVars;
+  sstrVecDict m_moduleVars;
   paramDict m_params;
-  dictStrVec m_branches;
+  sstrVecDict m_branches;
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
   strVec m_modulePorts;    
@@ -196,6 +201,7 @@ typedef struct _vaElement {
   strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;
   std::map < string_t, dependVec > m_dependTargMap;
+  sstrPairVecDict m_probeConstants;
   string_t m_moduleName;
   //current handling va code scope 
   vaState current_scope;  
@@ -250,6 +256,10 @@ str_startswith(const string_t& src, const string_t& targ);
 string_t 
 str_strip(const string_t s, const string_t chars, int mode);
 
+//replace key `from to `to in src recursively
+bool
+str_replace_key(string_t& src, const string_t& from, const string_t& to);
+
 //split a string into a vector by token1 and token2
 strVec
 str_split(const string_t& line, const char token1, const char token2);
@@ -258,11 +268,7 @@ void str_convert_unit(string_t& src);
 
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
-    dictStrVec& analogFuncVars);
-
-strVec
-resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr,
-    vaElement& vaSpecialItems);
+    sstrVecDict& analogFuncVars);
 
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
