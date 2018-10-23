@@ -14,7 +14,7 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader << std::endl;
   h_outheader << "#include <Sacado.hpp>" <<std::endl;
   h_outheader << std::endl;
-  h_outheader <<"// ----------   Xyce Includes   ----------" <<std::endl;
+  h_outheader <<"// ----------   Xyce Includes in header ----------" <<std::endl;
   h_outheader <<"#include <N_DEV_Configuration.h>" <<std::endl;
   h_outheader <<"#include <N_DEV_Const.h>" <<std::endl;
   h_outheader <<"#include <N_DEV_DeviceBlock.h>" <<std::endl;
@@ -209,11 +209,11 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   //xyceDeclareFadArrays
   h_outheader << "    //FadArrays\n";
   h_outheader << " // Arrays to hold probes\n";
-  h_outheader << " std::vector < AdmsFadType > probeVars;" <<std::endl;
+  h_outheader << " std::vector < CogendaFadType > probeVars;" <<std::endl;
   h_outheader << " // Arrays to hold contributions\n";
   h_outheader << " // dynamic contributions are differentiated w.r.t time\n";
-  h_outheader << " std::vector < AdmsFadType > staticContributions;" <<std::endl;
-  h_outheader << " std::vector < AdmsFadType > dynamicContributions;" <<std::endl;
+  h_outheader << " std::vector < CogendaFadType > staticContributions;" <<std::endl;
+  h_outheader << " std::vector < CogendaFadType > dynamicContributions;" <<std::endl;
   
   if(n_whitenoise >0 || n_flickernoise >0)
   {
@@ -242,7 +242,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
     // vt at \$temperature;
     //double adms_vt_nom;
 
-  h_outheader << "    // This one is for the annoying bogus \"XyceADMSInstTemp\" parameter\n";
+  h_outheader << "    // This one is for the annoying bogus \"XyceADMSInstTemp\" parameter\n"; //TODO
   h_outheader << "    // that we need so we can set it from the device manager when there's no\n";
   h_outheader << "    // \"TEMP\" parameter to use\n";
   h_outheader << "    double cogendaInstTemp;" <<std::endl;
@@ -273,6 +273,58 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
 void
 CgenHeaderClassModel(vaElement& vaModuleEntries, std::ofstream& h_outheader)
 {
+  h_outheader << "class Model : public DeviceModel" <<std::endl;
+  h_outheader << "{" <<std::endl;
+  h_outheader << "    typedef std::vector<Instance *> InstanceVector;" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "    friend class ParametricData<Model>;" <<std::endl;
+  h_outheader << "    friend class Instance;" <<std::endl;
+  h_outheader << "    friend struct Traits;" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "  public:" <<std::endl;
+  h_outheader << "    Model(" <<std::endl;
+  h_outheader << "      const Configuration &       configuration," <<std::endl;
+  h_outheader << "      const ModelBlock &          model_block," <<std::endl;
+  h_outheader << "      const FactoryBlock &        factory_block);" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "    ~Model();" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "private:" <<std::endl;
+  h_outheader << "    Model(const Model &);" <<std::endl;
+  h_outheader << "    Model &operator=(const Model &);" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "public:" <<std::endl;
+  h_outheader << "    virtual void forEachInstance(DeviceInstanceOp &op) const /* override */;" <<std::endl;
+  h_outheader << "    virtual std::ostream &printOutInstances(std::ostream &os) const;" <<std::endl;
+  h_outheader << "    bool processParams();" <<std::endl;
+  h_outheader << "    bool processInstanceParams();" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "  private:" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "  public:" <<std::endl;
+  h_outheader << "    void addInstance(Instance *instance)" <<std::endl;
+  h_outheader << "    {" <<std::endl;
+  h_outheader << "      instanceContainer.push_back(instance);" <<std::endl;
+  h_outheader << "    }" <<std::endl;
+  INSERT_EMPTY_LINE(h_outheader);
+
+  h_outheader << "  private:" <<std::endl;
+  h_outheader << "    std::vector<Instance*> instanceContainer;" <<std::endl;
+  h_outheader << "" <<std::endl;
+  h_outheader << "  private:" <<std::endl;
+
+  //TODO: how to handle XyceADMSInstTemp gracefully?
+    // This one is for the annoying bogus "XyceADMSInstTemp" parameter
+    // that we need so we can set it from the device manager when there's no
+    // "TEMP" model parameter to use
+  h_outheader << "    double cogendaModTemp;" <<std::endl;
+// Begin verilog Model Variables
+  h_outheader << "//   Model Parameters" <<std::endl;
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outheader << str_format("    {} {};", it->second.val_type, it->first) <<std::endl;
+  }
+  h_outheader << "};" <<std::endl;
 }
 
 returnFlag
@@ -293,10 +345,10 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   CgenIncludeFiles(moduleName, h_outheader);
   //main header content goes here
   h_outheader << "namespace Xyce {" << std::endl;
-  h_outheader << "Device {" << std::endl;
-  h_outheader << str_format("COGENDA_{} {", moduleName) << std::endl;
+  h_outheader << "namespace Device {" << std::endl;
+  h_outheader << str_format("namespace COGENDA_{} {", moduleName) << std::endl;
   h_outheader << "// This typedef is for our automatic differentiation:" << std::endl;
-  h_outheader << str_format("typedef Sacado::Fad::SFad<double,{}> COGENDAFadType;", numberProbes) << std::endl;
+  h_outheader << str_format("typedef Sacado::Fad::SFad<double,{}> CogendaFadType;", numberProbes) << std::endl;
   h_outheader << std::endl;
   h_outheader << "class Model;" << std::endl;
   h_outheader << "class Instance;" << std::endl;
@@ -328,17 +380,166 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   return Ret_NORMAL;
 }
 
+void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
+{
+  h_outCxx << "//-------------------------------------------------------------------------" <<std::endl;
+  h_outCxx <<"// ----------   Xyce Includes in Cxx ----------" <<std::endl;
+  h_outCxx <<"#include <Xyce_config.h>" <<std::endl;
+  h_outCxx <<str_format("#include \"N_DEV_COGENDA_{}.h\"", devName) <<std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx <<"#include <N_DEV_Const.h>" <<std::endl;
+  h_outCxx <<"#include <N_DEV_DeviceOptions.h>" <<std::endl;
+  h_outCxx <<"#include <N_DEV_DeviceMaster.h>" <<std::endl;
+  h_outCxx <<"#include <N_DEV_ExternData.h>" <<std::endl;
+  h_outCxx <<"#include <N_DEV_SolverState.h>" <<std::endl;
+  h_outCxx <<"#include <N_DEV_Message.h>" <<std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx <<"#include <N_LAS_Matrix.h>" <<std::endl;
+  h_outCxx <<"#include <N_LAS_Vector.h>" <<std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx <<"  #include <N_ANP_NoiseData.h>" <<std::endl;
+
+  h_outCxx <<"#include <N_UTL_FeatureTest.h>" <<std::endl;
+  h_outCxx <<"#if defined(HAVE_UNORDERED_MAP)" <<std::endl;
+  h_outCxx <<"#include <unordered_map>" <<std::endl;
+  h_outCxx <<"using std::unordered_map;" <<std::endl;
+  h_outCxx <<"#elif defined(HAVE_TR1_UNORDERED_MAP)" <<std::endl;
+  h_outCxx <<"#include <tr1/unordered_map>" <<std::endl;
+  h_outCxx <<"using std::tr1::unordered_map;" <<std::endl;
+  h_outCxx <<"#else" <<std::endl;
+  h_outCxx <<"#error neither unordered_map or tr1/unordered_map found!" <<std::endl;
+  h_outCxx <<"#endif" <<std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+}
+
+void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  h_outCxx <<"/* class Instance member functions */\n";
+  h_outCxx << "  //bool Instance::processParams()\n";
+  h_outCxx << "  //Instance::Instance(){...}\n";
+  h_outCxx << "  //Instance::~Instance()\n";
+  h_outCxx << "  //void Instance::registerLIDs\n";
+  h_outCxx << "  //void Instance::loadNodeSymbols\n";
+  h_outCxx << "  //void Instance::registerStoreLIDs\n";
+  h_outCxx << "  //void Instance::registerBranchDataLIDs\n";
+  h_outCxx << "  //const JacobianStamp & Instance::jacobianStamp() const\n";
+  h_outCxx << "  //void Instance::registerJacLIDs\n";
+  h_outCxx << "  //void Instance::setupPointers\n";
+  h_outCxx << "  //bool Instance::loadDAEFVector\n";
+  h_outCxx << "  //bool Instance::loadDAEQVector\n";
+  h_outCxx << "  //bool Instance::updatePrimaryState()\n";
+  h_outCxx << "  //bool Instance::updateSecondaryState()\n";
+  h_outCxx << "  //bool Instance::updateIntermediateVars\n";
+  h_outCxx << "  //int Instance::getNumNoiseSources\n";
+  h_outCxx << "  //void Instance::setupNoiseSources\n";
+  h_outCxx << "  //void Instance::getNoiseSources\n";
+  h_outCxx << "  //bool Instance::loadDAEdFdx\n";
+  h_outCxx << "  //bool Instance::loadDAEdQdx\n";
+  h_outCxx << "  //bool Instance::updateTemperature\n";
+  //
+}
+
+void 
+genModelMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  h_outCxx <<"/* class Model member functions */\n";
+  h_outCxx << "  //bool Model::processParams\n";
+  h_outCxx << "  //bool Model::processInstanceParams\n";
+  h_outCxx << "  //Model::Model(..){...}\n";
+  h_outCxx << "  //Model::~Model\n";
+  h_outCxx << "  //std::ostream &Model::printOutInstances\n";
+  h_outCxx << "  //void Model::forEachInstance()\n";
+}
+
+void 
+genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  string_t moduleName = vaModuleEntries.m_moduleName;
+  h_outCxx <<"/* class Traits member functions */\n";
+  h_outCxx <<"  //void Traits::loadInstanceParameters() \n";
+  h_outCxx <<str_format("void Traits::loadInstanceParameters(ParametricData<COGENDA_{}::Instance> &p)",moduleName)<<std::endl;
+  h_outCxx <<"{\n";
+  h_outCxx <<"  // This kludge is to force us always to have an instance parameter\n";
+  h_outCxx <<"  // that the device manager can set to the temperature, even if we have\n";
+  h_outCxx <<"  // no \"TEMP\".\n";
+  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_INST_TEMP\", 0.0, &COGENDA_{}::Instance::cogendaInstTemp)",moduleName)<<std::endl;
+  h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
+  h_outCxx <<"    .setUnit(U_DEGK)\n";
+  h_outCxx <<"    .setCategory(CAT_TEMP)\n";
+  h_outCxx <<"    .setDescription(\"Internally set parameter for device instance temperature\");\n";
+  //set all normal VA parameters as instance paramsters
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Instance:{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+  }
+  h_outCxx <<"}\n\n";
+  
+  h_outCxx <<"  //void Traits::loadModelParameters()\n";
+  h_outCxx <<str_format("void Traits::loadModelParameters(ParametricData<COGENDA_{}::Model> &p)",moduleName)<<std::endl;
+  h_outCxx <<"{\n";
+  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_MOD_TEMP\", 0.0, &COGENDA_{}::Model::cogendaModTemp)",moduleName)<<std::endl;
+  h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
+  h_outCxx <<"    .setUnit(U_DEGK)\n";
+  h_outCxx <<"    .setCategory(CAT_TEMP)\n";
+  h_outCxx <<"    .setDescription(\"Internally set parameter for device model temperature\");\n";
+  //set all normal VA parameters as model paramsters
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Model:{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+  }
+  h_outCxx <<"}\n\n";
+  
+  h_outCxx <<"  //Device *Traits::factory()\n";
+  h_outCxx << "Device *Traits::factory(const Configuration &configuration, const FactoryBlock &factory_block)" <<std::endl;
+  h_outCxx << "  {" <<std::endl;
+  h_outCxx << "    return new DeviceMaster<Traits>(configuration, factory_block, factory_block.solverState_, factory_block.deviceOptions_);" <<std::endl;
+  h_outCxx << "}" <<std::endl;
+
+  h_outCxx << "void registerDevice()" <<std::endl;
+  h_outCxx << "{" <<std::endl;
+  h_outCxx << "  Config<Traits>::addConfiguration()" <<std::endl; 
+  h_outCxx << str_format("    .registerDevice(\"{}\", 1)", moduleName) <<std::endl; 
+  h_outCxx << str_format("    .registerModelType(\"{}\", 1);", moduleName) <<std::endl;
+  h_outCxx << "}" <<std::endl;
+}
 
 returnFlag
 CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
 {
   std::ofstream h_outCxx;
   h_outCxx.open(fCxxName.c_str(),std::ofstream::out);
+  string_t moduleName = vaModuleEntries.m_moduleName;
+  CgenIncludeFilesCxx(moduleName, h_outCxx);
   if(!h_outCxx)
   {
     std::cout << str_format("file {}: cannot open to write!\n",fCxxName);
     return Ret_FATAL;
   }  
-  h_outCxx << "This is a C++ Main file of Implementation!" << std::endl;
+  h_outCxx << "//The C++ Main part of Model Implementation Starts here" << std::endl;
+  h_outCxx <<"namespace Xyce {" << std::endl;
+  h_outCxx <<"namespace Device {" << std::endl;
+  h_outCxx << str_format("namespace COGENDA_{} {", moduleName) << std::endl;
+  h_outCxx <<"JacobianStamp Instance::jacStamp;" << std::endl;
+  h_outCxx <<"IdVector Instance::nodeMap;" << std::endl;
+  h_outCxx <<"PairMap Instance::pairToJacStampMap;" << std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  for(auto it=vaModuleEntries.m_moduleNets.begin(); 
+      it != vaModuleEntries.m_moduleNets.end(); ++it)
+  {
+    h_outCxx << str_format("    const int Instance::cogendaNodeID_{};", *it) <<std::endl;
+  }
+  h_outCxx << "    const int Instance::cogendaNodeID_GND;" <<std::endl;  
+  INSERT_EMPTY_LINE(h_outCxx);
+  // Additional IDs for branch equations
+  //TODO?
+  genDeviceTraits(vaModuleEntries, h_outCxx);
+  genInstMemberFunc(vaModuleEntries, h_outCxx);
+  genModelMemberFunc(vaModuleEntries, h_outCxx);
+ 
+  h_outCxx << str_format("} // namespace COGENDA_{}\n",moduleName);
+  h_outCxx << "} // namespace Device\n";
+  h_outCxx << "} // namespace Xyce\n";
   return Ret_NORMAL;
 }
+
