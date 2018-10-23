@@ -182,6 +182,7 @@ typedef struct _dependTargInfo {
 
 typedef struct _valueRange {
   string_t init_value;
+  string_t val_type; //integer, real, etc
   int lower_Op;      //vpiGeOp, vpiGtOp
   string_t lower_value;
   int higher_Op;     //vpiLeOp, vpiLtOp

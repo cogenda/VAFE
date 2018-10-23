@@ -31,6 +31,9 @@ sstrDict va_c_expr_map = {
 std::map < int, string_t > va_c_type_map = {
   {vpiRealVar,    "double"},
   {vpiIntegerVar, "int"},
+  {vpiDecConst,   "int"},
+  {vpiIntConst,   "int"},
+  {vpiRealConst,  "double"},
 };
 sstrDict va_spice_unit_map = {
   {"T",     "e12"},
@@ -342,6 +345,10 @@ resolve_block_parameters(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
   string_t parName = (char *) vpi_get_str (vpiName, obj);
   vpiHandle value_handle = vpi_handle(vpiExpr, obj);
   _range.init_value = str_strip(vpi_resolve_expr_impl (value_handle, vaSpecialItems));
+
+  int cur_const_type = (int) vpi_get (vpiConstType, obj);
+  assert(key_exists(va_c_type_map, cur_const_type));
+  _range.val_type = va_c_type_map[cur_const_type];
   vpiHandle iterator = vpi_iterate (vpiValueRange, obj);
   if(!iterator)
   {
