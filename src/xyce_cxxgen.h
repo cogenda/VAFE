@@ -30,4 +30,15 @@ const string_t str_format(const string_t& fmt_spec,
     BuildFormatString(builder, fmt_spec, args...);
     return builder.str();
 }
+
+typedef struct _instanceInfo {
+  int numExtVars;       //external nodes number
+  int numIntVars;       //internal nodes number
+  intPair fNodePtrIndex; //start and end index of fNodePtrs in m_variables
+  intPair qNodePtrIndex;
+  intPair mNodeOffsetIndex;
+  strVec m_variables;   //member variable needed to be initialized for Class Instance
+  strVec m_probeConsts;   //probe node IDs
+  strPairVec stampNodeMtrix; //node stamp matrix vector with node pair
+} instanceInfo;
 #endif

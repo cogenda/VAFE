@@ -5,7 +5,7 @@
 #include "xyce_vacomp.h"
 #include "xyce_cxxgen.h"
 
-
+static instanceInfo instanceInfoCxx;
 void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
 {
   h_outheader << "//-------------------------------------------------------------------------" <<std::endl;
@@ -113,49 +113,73 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   for(auto it=vaModuleEntries.m_moduleNets.begin(); it != vaModuleEntries.m_moduleNets.end(); ++it)
   {
     h_outheader << str_format("    int li_{};", *it) <<std::endl;
+    instanceInfoCxx.m_variables.push_back(str_format("li_{}", *it));
   }
   //xyceDeclareBranchLIDVariables
   h_outheader << "    //Branch LID Variables\n";
   for(auto it=vaModuleEntries.m_branches.begin(); it != vaModuleEntries.m_branches.end(); ++it)
   {
-    h_outheader << str_format("    int li_BRA_{}_{};", it->second[0], it->second[1]) <<std::endl;
+    string_t _varName = str_format("li_BRA_{}_{}", it->second[0], it->second[1]);
+    h_outheader << str_format("    int {};", _varName) <<std::endl;
+    instanceInfoCxx.m_variables.push_back(_varName);
   }
   //xyceDeclareLeadBranchLIDVariables
   h_outheader << "    //Lead Branch Variables\n";
   for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
   {
     h_outheader << str_format("    int li_branch_i{};", *it) <<std::endl;
+    instanceInfoCxx.m_variables.push_back(str_format("li_branch_i{}", *it));
   }
+  instanceInfoCxx.numExtVars = vaModuleEntries.m_modulePorts.size();
+  instanceInfoCxx.numIntVars = vaModuleEntries.m_moduleNets.size() - instanceInfoCxx.numExtVars; 
   //xyceDeclareJacobianOffsets
   strVec fNodePtrs, qNodePtrs, mNodeOffsets;
-  strPairVec _recodNodeMtrix;
+  strPairVec &_recodNodeMtrix=instanceInfoCxx.stampNodeMtrix;
 
   for(auto it=vaModuleEntries.m_contribs.begin(); 
     it != vaModuleEntries.m_contribs.end(); ++it)
   {
+    strPair nodePair;
     for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
       for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
       {
-        strPair nodePair = {*node_row, *node_col};
-        if(item_exists(_recodNodeMtrix, nodePair))
-          continue;
-        else
-          _recodNodeMtrix.push_back(nodePair);
-        //Jacobian  pointers:  double * f|q_bi_Equ_ti_Node_Ptr;
-        fNodePtrs.push_back(str_format("    double * f_{}_Equ_{}_Node_Ptr;", *node_row, *node_col));
-        qNodePtrs.push_back(str_format("    double * q_{}_Equ_{}_Node_Ptr;", *node_row, *node_col));
-        //Jacobian offsets:    int m_bi_Equ_ti_NodeOffset;
-        mNodeOffsets.push_back(str_format("    int m_{}_Equ_{}_NodeOffset;", *node_row, *node_col));
+        for(int idx=0; idx<2; idx++)
+        {
+          if(!idx)
+            nodePair = {*node_row, node_col->first};
+          else
+            nodePair = {*node_row, node_col->second};
+          if(nodePair.second == UNFILLED)
+            continue;
+          if(item_exists(_recodNodeMtrix, nodePair))
+            continue;
+          else
+            _recodNodeMtrix.push_back(nodePair);
+          //Jacobian  pointers:  double * f|q_bi_Equ_ti_Node_Ptr;
+          fNodePtrs.push_back(str_format("f_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
+          qNodePtrs.push_back(str_format("q_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
+          //Jacobian offsets:    int m_bi_Equ_ti_NodeOffset;
+          mNodeOffsets.push_back(str_format("m_{}_Equ_{}_NodeOffset", nodePair.first, nodePair.second));
+        }
       }
   }
+  instanceInfoCxx.fNodePtrIndex.first=instanceInfoCxx.m_variables.size();
+  insert_vec2vec_unique(instanceInfoCxx.m_variables, fNodePtrs);
+  instanceInfoCxx.fNodePtrIndex.second=instanceInfoCxx.m_variables.size()-1;
+  instanceInfoCxx.qNodePtrIndex.first =instanceInfoCxx.fNodePtrIndex.second+1; 
+  insert_vec2vec_unique(instanceInfoCxx.m_variables, qNodePtrs);
+  instanceInfoCxx.qNodePtrIndex.second=instanceInfoCxx.m_variables.size()-1;
+  instanceInfoCxx.mNodeOffsetIndex.first =instanceInfoCxx.qNodePtrIndex.second+1; 
+  insert_vec2vec_unique(instanceInfoCxx.m_variables, mNodeOffsets);
+  instanceInfoCxx.mNodeOffsetIndex.second=instanceInfoCxx.m_variables.size()-1;
   h_outheader << "    //Jacobian pointers\n";
   for(auto it=fNodePtrs.begin(); it != fNodePtrs.end(); ++it)
-    h_outheader << *it <<std::endl;
+    h_outheader << str_format("    double * {};", *it) <<std::endl;
   for(auto it=qNodePtrs.begin(); it != qNodePtrs.end(); ++it)
-    h_outheader << *it <<std::endl;
+    h_outheader << str_format("    double * {};", *it) <<std::endl;
   h_outheader << "    //Jacobian Offsets\n";
   for(auto it=mNodeOffsets.begin(); it != mNodeOffsets.end(); ++it)
-    h_outheader << *it <<std::endl;
+    h_outheader << str_format("    int {};", *it) <<std::endl;
   
   //xyceDeclareNodeConstants
   h_outheader << "    //Node Constants\n";
@@ -190,15 +214,16 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
       for(auto itv=it->second.begin(); itv != it->second.end(); ++itv)
       {
         string_t sn_poi=itv->first, sn_neg=itv->second;
-        _strItem = str_format("    static const int cogendaProbeID_{}_{}_{}", etype, sn_poi, sn_neg, _idx);
+        _strItem = str_format("{}_{}_{}", etype, sn_poi, sn_neg);
         if(item_exists(_strVecTmp, _strItem))
           continue;
         else
           _strVecTmp.push_back(_strItem);
-        h_outheader << str_format("{} = {};", _strItem, _idx) <<std::endl;
+        h_outheader << str_format("    static const int cogendaProbeID_{} = {};", _strItem, _idx) <<std::endl;
         _idx += 1;
       }
     }
+   instanceInfoCxx.m_probeConsts=_strVecTmp;
   }
   //xyceDeclareLimitedProbeStoreLIDs
   h_outheader << "    //Limited Probe Store LIDs\n";
@@ -240,12 +265,19 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   INSERT_EMPTY_LINE(h_outheader);
 
     // vt at \$temperature;
-    //double adms_vt_nom;
+    //double adms_vt_nom;  //TODO?
 
   h_outheader << "    // This one is for the annoying bogus \"XyceADMSInstTemp\" parameter\n"; //TODO
   h_outheader << "    // that we need so we can set it from the device manager when there's no\n";
   h_outheader << "    // \"TEMP\" parameter to use\n";
   h_outheader << "    double cogendaInstTemp;" <<std::endl;
+  // TODO:Begin verilog Model Variables, needed here?
+  h_outheader << "//   Model Parameters also as instance params" <<std::endl;
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outheader << str_format("    {} {};", it->second.val_type, it->first) <<std::endl;
+  }
+
   INSERT_EMPTY_LINE(h_outheader);
 
   if(n_collapsible == 0)
@@ -265,7 +297,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    // These instance-owned vectors are for storage of lead current data\n";
   h_outheader << "    std::vector<double> leadCurrentF;" <<std::endl;
   h_outheader << "    std::vector<double> leadCurrentQ;" <<std::endl;
-  h_outheader << "    };" <<std::endl;
+  h_outheader << "};" <<std::endl;
   INSERT_EMPTY_LINE(h_outheader);
 
 }
@@ -412,30 +444,400 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
 }
 
+void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string_t type)
+{
+    //note: loop for all Flow's contribs and depend notes to combinate the Jacob element
+    for(auto it=vaModuleEntries.m_contribs.begin(); 
+      it != vaModuleEntries.m_contribs.end(); ++it)
+    {
+      for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
+        for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
+        {
+          for(int idx=0; idx<2; idx++)
+          {
+            string_t _nodPos="", _nodNeg="", _nodColPos="", _nodColNeg="",_node_col;
+            if(!idx)
+              _node_col = node_col->first;
+            else
+              _node_col = node_col->second;
+            if(_node_col == UNFILLED)
+              continue;
+            if(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",*node_row,_node_col)))
+            {
+              _nodPos    = *node_row;
+              _nodNeg    = _node_col;
+              _nodColPos = *node_row;
+              _nodColNeg = _node_col;
+            }
+            else if(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_GND",_node_col)))
+            {
+              _nodPos    = *node_row;
+              _nodNeg    = _node_col;
+              _nodColPos = *node_row;
+              _nodColNeg = "GND";
+            }
+            else
+              continue;
+            if(type == "Gptr")
+            {
+              //(*f_bi_Equ_ti_Node_Ptr) +=  +staticContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
+              h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
+            }
+            else if(type == "Goffest")
+            {
+              //dFdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +staticContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
+              h_outCxx << str_format("  dFdx[li_{}][A_{}_Equ_{}_NodeOffset] +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
+            }
+            else if(type == "Cptr")
+            {
+              //(*q_bi_Equ_ti_Node_Ptr) +=  +dynamicContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
+              h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
+            }
+            else if(type == "Coffest")
+            {
+              //dQdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +dynamicContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
+              h_outCxx << str_format("  dQdx[li_{}][A_{}_Equ_{}_NodeOffset] +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg)<< std::endl;
+            }
+          }
+        }
+    }
+}
+
 void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
 {
+  int _idx = 0;
   h_outCxx <<"/* class Instance member functions */\n";
-  h_outCxx << "  //bool Instance::processParams()\n";
-  h_outCxx << "  //Instance::Instance(){...}\n";
-  h_outCxx << "  //Instance::~Instance()\n";
-  h_outCxx << "  //void Instance::registerLIDs\n";
+  h_outCxx << "bool Instance::processParams () {"<<std::endl;
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
+    h_outCxx << str_format("    {} = model_.{}",it->first, it->first) <<std::endl;
+  }
+  h_outCxx << "  updateTemperature(cogendaInstTemp);\n";
+  h_outCxx << "  return true;\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  h_outCxx << "Instance::Instance(\n";
+  h_outCxx << "  const Configuration & configuration,\n";
+  h_outCxx << "  const InstanceBlock & instance_block,\n";
+  h_outCxx << "  Model &               model,\n";
+  h_outCxx << "  const FactoryBlock &  factory_block)\n";
+  h_outCxx << "  : DeviceInstance(instance_block, configuration.getInstanceParameters(), factory_block),\n";
+  h_outCxx << "    model_(model),\n";
+  //insert variables needed to be initialized here
+  {
+    strVec &_myVars = instanceInfoCxx.m_variables;
+    for(auto it=_myVars.begin(); it != _myVars.end(); ++it)
+    {
+      string_t initVal="0";
+      if( str_startswith(*it, "li_") || str_startswith(*it, "m_"))
+        initVal = "-1";
+      h_outCxx << str_format("    {}({}),", *it, initVal) <<std::endl;
+    }
+  }
+  h_outCxx<<"      admsTemperature(getDeviceOptions().temp.getImmutableValue<double>())\n";
+  //starts Instance::Instance() body
+  h_outCxx << "{\n";
+  h_outCxx << str_format("  numExtVars = {};",instanceInfoCxx.numExtVars) <<std::endl;
+  h_outCxx << str_format("  numIntVars = {};",instanceInfoCxx.numIntVars) <<std::endl;
+  h_outCxx << "  setNumStoreVars(0);\n";
+
+  // Do not allocate "branch" (lead current) vectors by default
+  h_outCxx << "  setNumBranchDataVars(0);\n";
+  h_outCxx << str_format("  numBranchDataVarsIfAllocated = {};",instanceInfoCxx.numExtVars)<<std::endl;
+
+  h_outCxx << str_format("  leadCurrentF.resize({});",instanceInfoCxx.numExtVars)<<std::endl;
+  h_outCxx << str_format("  leadCurrentQ.resize({});",instanceInfoCxx.numExtVars)<<std::endl;
+  
+  // Set up jacobian stamp:
+  // Create a vector of the non-zero elements of the stamp
+  h_outCxx << "  PairVector jacobianElements;\n";
+  {
+    strPairVec &_nodeMtrix=instanceInfoCxx.stampNodeMtrix;
+    for(auto nodePair=_nodeMtrix.begin(); nodePair != _nodeMtrix.end(); ++nodePair)
+    {
+      h_outCxx << str_format("  jacobianElements.push_back(IntPair(cogendaNodeID_{},cogendaNodeID_{}));",nodePair->first, nodePair->second)<<std::endl;
+    }
+  }
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx << "  setDefaultParams();\n";
+  h_outCxx << "  setParams(instance_block.params);\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+    // Real bogosity here...
+  h_outCxx << "  if (!given(\"XYCE_COGENDA_INST_TEMP\"))\n";
+  h_outCxx << "    admsInstTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+    //calculate any parameters specified as expressions
+  h_outCxx << "  updateDependentParameters();\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+    // calculate dependent (i.e. computed params) and check for errors.
+  h_outCxx << "  processParams();\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  h_outCxx << "  PairVector collapsedNodes;\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  // Now generate the jacstamp from what we already have.
+  // This jacstamp will have all the correct node mapping.  map will be the nodal mapping of original
+  // node IDs to row/column ids in the reduced (non-sparse) representation of the jacobian.
+  // (for devices that have no collapsibles, this will be static, so check that it hasn't already
+  // been filled in)
+  h_outCxx << "  if (jacStamp.empty())\n";
+  h_outCxx << "  {\n";
+  h_outCxx << str_format("    int originalSize = {};\n",instanceInfoCxx.numExtVars+instanceInfoCxx.numIntVars);
+  h_outCxx << "    computeJacStampAndMaps(jacobianElements,collapsedNodes,jacStamp,nodeMap,pairToJacStampMap,originalSize);\n";
+  h_outCxx << "  }\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  h_outCxx << "  Instance::~Instance(){}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx << "  void Instance::registerLIDs( const LocalIdVector & intLIDVecRef,\n";
+  h_outCxx << "                               const LocalIdVector & extLIDVecRef)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  AssertLIDs(intLIDVecRef.size() == numIntVars);\n";
+  h_outCxx << "  AssertLIDs(extLIDVecRef.size() == numExtVars);\n";
+
+  h_outCxx << "  LocalIdVector localLIDVec;\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  // copy over the global ID lists into a local array.
+  // The end result of this is an array of LIDs corresponding to all the
+  // nodes we actually have, in the order that topology thinks of them
+  h_outCxx << "  intLIDVec = intLIDVecRef;\n";
+  h_outCxx << "  extLIDVec = extLIDVecRef;\n";
+  h_outCxx << "  localLIDVec.resize(numExtVars+numIntVars);\n";
+  h_outCxx << "  for (int localNodeIndex=0;localNodeIndex<numExtVars;++localNodeIndex)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    localLIDVec[localNodeIndex]=extLIDVec[localNodeIndex];\n";
+  h_outCxx << "  }\n";
+  h_outCxx << "  for (int localNodeIndex=numExtVars;localNodeIndex<numExtVars+numIntVars;++localNodeIndex)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    localLIDVec[localNodeIndex]=intLIDVec[localNodeIndex-numExtVars];\n";
+  h_outCxx << "  }\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+    
+  // Now pull the LIDs for each of our nodes out of the local array.
+  // Use the node mapping created by createJacStampAndMaps to handle
+  // all the node collapse complications.
+  for(auto it=vaModuleEntries.m_moduleNets.begin(); 
+      it != vaModuleEntries.m_moduleNets.end(); ++it)
+  {
+    h_outCxx << str_format("  li_{} = localLIDVec[nodeMap[cogendaNodeID_{}]];", *it, *it) <<std::endl;
+  }
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //void Instance::loadNodeSymbols\n";
-  h_outCxx << "  //void Instance::registerStoreLIDs\n";
-  h_outCxx << "  //void Instance::registerBranchDataLIDs\n";
-  h_outCxx << "  //const JacobianStamp & Instance::jacobianStamp() const\n";
+  h_outCxx << "void Instance::loadNodeSymbols(Util::SymbolTable &symbol_table) const\n";
+  h_outCxx << "{\n";
+  for(auto it=vaModuleEntries.m_moduleNets.begin(); 
+      it != vaModuleEntries.m_moduleNets.end(); ++it)
+  {
+    if(item_exists(vaModuleEntries.m_modulePorts,*it))
+        continue;
+    h_outCxx << str_format("  addInternalNode(symbol_table, li_{}, getName(), \"{}\");", *it, *it) <<std::endl;        
+  }
+
+  h_outCxx << "  if (loadLeadCurrent)\n";
+  h_outCxx << "  {\n";
+  _idx=1;
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it, ++_idx)
+  {
+    h_outCxx << str_format("    addBranchDataNode( symbol_table, li_branch_{}, getName(), \"BRANCH_D{}\");",*it,_idx) << std::endl;
+  }
+  h_outCxx << "  }\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  h_outCxx << "void Instance::registerStoreLIDs( const LocalIdVector & stoLIDVecRef)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  AssertLIDs(stoLIDVecRef.size() == getNumStoreVars());\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  h_outCxx << "void Instance::registerBranchDataLIDs(const std::vector<int> & branchLIDVecRef)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  AssertLIDs(branchLIDVecRef.size() == getNumBranchDataVars());\n";
+
+  h_outCxx << "  if (loadLeadCurrent)\n";
+  h_outCxx << "  {    \n";
+  h_outCxx << "        int i = 0;\n";
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+    h_outCxx << str_format("        li_branch_{} = branchLIDVecRef[i++];\n", *it);
+  h_outCxx << "  }\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  h_outCxx << "const JacobianStamp & Instance::jacobianStamp() const\n";
+  h_outCxx << "{  return jacStamp; }\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
   h_outCxx << "  //void Instance::registerJacLIDs\n";
+  h_outCxx << "void Instance::registerJacLIDs( const JacobianStamp & jacLIDVec)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  DeviceInstance::registerJacLIDs(jacLIDVec);\n";  
+  h_outCxx << "  IntPair jacLoc;\n";
+  for(int it=instanceInfoCxx.mNodeOffsetIndex.first; it <= instanceInfoCxx.mNodeOffsetIndex.second; ++it)
+  {
+    string_t _strtmp = instanceInfoCxx.m_variables.at(it);
+    strVec node_names = str_split(_strtmp, '_','_');
+    h_outCxx << str_format("  jacLoc = pairToJacStampMap[IntPair(admsNodeID_{},admsNodeID_{})];",node_names[1],node_names[3])<<std::endl;
+    h_outCxx << str_format("  {} = jacLIDVec[jacLoc.first][jacLoc.second];",_strtmp)<<std::endl;
+  }
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
   h_outCxx << "  //void Instance::setupPointers\n";
+  h_outCxx << "void Instance::setupPointers( )\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  Linear::Matrix * dFdxMatPtr = extData.dFdxMatrixPtr;\n";
+  h_outCxx << "  Linear::Matrix * dQdxMatPtr = extData.dQdxMatrixPtr;\n";
+  for(int it=instanceInfoCxx.fNodePtrIndex.first; it <= instanceInfoCxx.fNodePtrIndex.second; ++it)
+  {
+    string_t _strtmp = instanceInfoCxx.m_variables.at(it);
+    strVec node_names = str_split(_strtmp, '_','_');
+    h_outCxx << str_format("  {} = dFdxMatPtr->returnRawEntryPointer(li_{},li_{});",_strtmp,
+        node_names[1], node_names[3])<<std::endl;
+  }
+  for(int it=instanceInfoCxx.qNodePtrIndex.first; it <= instanceInfoCxx.qNodePtrIndex.second; ++it)
+  {
+    string_t _strtmp = instanceInfoCxx.m_variables.at(it);
+    strVec node_names = str_split(_strtmp, '_','_');
+    h_outCxx << str_format("  {} = dQdxMatPtr->returnRawEntryPointer(li_{},li_{});",_strtmp,
+        node_names[1], node_names[3])<<std::endl;
+  }
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
   h_outCxx << "  //bool Instance::loadDAEFVector\n";
+  h_outCxx << "bool Instance::loadDAEFVector()\n";
+  h_outCxx << "{\n";
+
+  h_outCxx << "  bool bsuccess=true;\n";
+  for(auto it=vaModuleEntries.m_moduleNets.begin(); it != vaModuleEntries.m_moduleNets.end(); ++it)
+  {
+    h_outCxx << str_format("  (*extData.daeFVectorPtr)[li_{}] += staticContributions[cogendaNodeID_{}].val();",
+        *it, *it) << std::endl;
+  }
+  h_outCxx << "  if (loadLeadCurrent)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    double * leadF = extData.nextLeadCurrFCompRawPtr;\n";
+
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+    h_outCxx << str_format("          leadF[li_branch_i{}] = leadCurrentF[cogendaNodeID_{}];",
+      *it, *it) << std::endl;
+
+    // here we have to do special things for BJTs, MOSFETs and 2-terminal
+    // devices for power computation.
+    // power not supported for this device type, don't load junctionV
+  h_outCxx << "  }\n";  
+  h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n";  
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //bool Instance::loadDAEQVector\n";
+  h_outCxx << "bool Instance::loadDAEQVector()\n";
+  h_outCxx << "{\n";
+
+  for(auto it=vaModuleEntries.m_moduleNets.begin(); it != vaModuleEntries.m_moduleNets.end(); ++it)
+  {
+    h_outCxx << str_format("  (*extData.daeQVectorPtr)[li_{}] += dynamicContributions[cogendaNodeID_{}].val();",
+        *it, *it) << std::endl;
+  }
+  h_outCxx << "  if (loadLeadCurrent)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    double * leadQ = extData.nextLeadCurrQCompRawPtr;\n";
+
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+    h_outCxx << str_format("          leadQ[li_branch_i{}] = leadCurrentQ[cogendaNodeID_{}];",
+      *it, *it) << std::endl;
+
+  h_outCxx << "  }\n";  
+  h_outCxx << "  return true;\n";
+  h_outCxx << "}\n";  
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //bool Instance::updatePrimaryState()\n";
+  h_outCxx << "bool Instance::updatePrimaryState()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  bool bsuccess = true;\n";
+  h_outCxx << "  bsuccess = updateIntermediateVars();\n";
+  // if old DAE were implemented, we'd save dynamic contributions as state
+  // here.
+  h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
   h_outCxx << "  //bool Instance::updateSecondaryState()\n";
-  h_outCxx << "  //bool Instance::updateIntermediateVars\n";
+  h_outCxx << "bool Instance::updateSecondaryState()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  bool bsuccess = true;\n";
+
+  // were old DAE implemented, we'd pull dynamic contribution derivatives
+  // out of state.
+
+  h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  admsTemperature = temperatureTemp;\n";
+  h_outCxx << "  adms_vt_nom = adms_vt(temperatureTemp);\n"; //TODO??
+  h_outCxx << "  return true;\n";
+  h_outCxx << "}\n";  
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //int Instance::getNumNoiseSources\n";
+  h_outCxx << "int Instance::getNumNoiseSources () const\n";
+  h_outCxx << "{ return 0; } //Not implement Noise model \n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
   h_outCxx << "  //void Instance::setupNoiseSources\n";
+  h_outCxx << "void Instance::setupNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
+  h_outCxx << "{ }//Not implement Noise model \n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
   h_outCxx << "  //void Instance::getNoiseSources\n";
-  h_outCxx << "  //bool Instance::loadDAEdFdx\n";
+  h_outCxx << "void Instance::getNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
+  h_outCxx << "{ }//Not implement Noise model \n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  h_outCxx << "  //bool Instance::loadDAEdFdx //Load the dFdx static jacobian matrix\n";
+  h_outCxx << "bool Instance::loadDAEdFdx()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  bool bsuccess = true;\n";
+  h_outCxx << "  Linear::Matrix & dFdx = *(extData.dFdxMatrixPtr);\n";
+
+  h_outCxx << "#ifndef Xyce_NONPOINTER_MATRIX_LOAD\n";
+  genStampGCStuff(vaModuleEntries, h_outCxx,"Gptr");
+  h_outCxx << "#else\n";
+  h_outCxx << "  //use the offsets instead of pointers\n";
+  genStampGCStuff(vaModuleEntries, h_outCxx, "Goffest"); 
+  h_outCxx << "#endif\n";
+  
+  h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n";  
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //bool Instance::loadDAEdQdx\n";
-  h_outCxx << "  //bool Instance::updateTemperature\n";
+  h_outCxx << "bool Instance::loadDAEdQdx()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  bool bsuccess = true;\n";
+  h_outCxx << "  Linear::Matrix & dQdx = *(extData.dQdxMatrixPtr);\n";
+  h_outCxx << "#ifndef Xyce_NONPOINTER_MATRIX_LOAD\n";
+  genStampGCStuff(vaModuleEntries, h_outCxx,"Cptr");
+  h_outCxx << "#else\n";
+  h_outCxx << "  //use the offsets instead of pointers\n";
+  genStampGCStuff(vaModuleEntries, h_outCxx, "Coffest"); 
+  h_outCxx << "#endif\n";
+  h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n";  
+  
+  h_outCxx << "  //bool Instance::updateIntermediateVars\n";
   //
 }
 

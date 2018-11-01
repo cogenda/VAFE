@@ -249,8 +249,21 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
   else if(item_exists(vaSpecialItems.m_moduleNets, tagName))
   {
     //it's a valid node & not exists here, insert it
-    if(!item_exists(depItem.dependNodes, tagName))
-      depItem.dependNodes.push_back(tagName);
+    //if(!item_exists(depItem.dependNodes, tagName))
+    {
+      strPair &_nodePair = depItem.dependNodes.back();
+      if(!depItem.dependNodes.size() || _nodePair.second != UNFILLED)
+      {
+        depItem.dependNodes.push_back({tagName,UNFILLED});
+      }
+      else
+      {
+        assert(_nodePair.second == UNFILLED);
+        _nodePair.second = tagName;
+        //check and remove the redundant item
+        item_redundant_remove(depItem.dependNodes);
+      }
+    }
   }
   else
   {
@@ -302,13 +315,15 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
       _obj_type == vpiAnalogBuiltinFuncCall ||
       _obj_type == vpiSysFuncCall ||
       _obj_type == vpiAnalogSysTaskCall ||
-      _obj_type == vpiAnalogFilterFuncCall ||
+      _obj_type == vpiAnalogFilterFuncCall || //ddt/ddx/...
       _obj_type == vpiAnalogSmallSignalFuncCall || //white|flicker_noise(...)
       _obj_type == vpiAnalogSysFuncCall)
   {
     if(IGNORE_NOISE == 1 && _obj_type == vpiAnalogSmallSignalFuncCall)
       return;
-    insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
+    if(_obj_type != vpiAnalogFilterFuncCall || 
+        vaSpecialItems.current_scope == VA_ContribWithFilterFunc)
+      insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
     return;
   }
   else if(_obj_type == xvpiReference)
@@ -685,7 +700,7 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     assert(nodes.size() <= 2);
     if(nodes.size() < 2)
       nodes.push_back(GND);
-    vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]});
+    vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]}); //TODO avoid the duplicated item
   }
   else  //here is analog/system function call
     retStr = _strType + "(" + concat_vector2string(nodes, ",") + ");";
@@ -907,9 +922,13 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   _contrib.contrib_lhs=_strLhs;
   _contrib.contrib_rhs=_strRhs;
   _contrib.nodes = nodes;
+  if(vaSpecialItems.objPended)
+    vaSpecialItems.current_scope = VA_ContribSkipFilterFunc;
   insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
   _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
   vaSpecialItems.m_contribs.push_back(_contrib); 
+  if(vaSpecialItems.objPended)
+    vaSpecialItems.current_scope = VA_ContribWithFilterFunc;
   //check if there is ddt/ddx
   if(vaSpecialItems.current_scope == VA_ContribWithFilterFunc)
   {
@@ -933,7 +952,7 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _strLhs  = "Q_ddt_";
     _strLhs += "contrib_" + concat_vector2string(nodes, "_");
     _strRhs  = concat_vector2string(_args, "_");
-    _retStr += _strLhs + "=" + _strRhs + ";";
+    _retStr = _strLhs + "=" + _strRhs + ";";
     _retStr.insert(0, g_indent_width, ' ');
     retStr  += "\n" + _retStr;
     _contrib.etype = VA_Charge;

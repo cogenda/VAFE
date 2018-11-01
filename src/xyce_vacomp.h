@@ -21,12 +21,14 @@
 #define IGNORE_NOISE 1
 #define INSERT_EMPTY_LINE(h) h << std::endl
 #define UNDEF -99999
+#define UNFILLED "__UNFILLED__"
 #define GND "GND"
 
 struct _dependTargInfo;
 struct _valueRange;
 typedef std::string string_t;
 typedef std::pair< string_t, string_t > strPair;
+typedef std::pair< int, int > intPair;
 typedef std::vector < string_t > strVec;
 typedef std::vector < strPair > strPairVec;
 typedef std::vector < int > intVec;
@@ -156,7 +158,8 @@ typedef enum _vaState {
   VA_AnalogFunctionDef,  //2: analog func block 
   VA_ContribStmt,        //3: Y <+ X_expr stmt (w/o ddt/ddx/...)
                          //4: Y <+ X_expr+ddt/ddx/idt(...)
-  VA_ContribWithFilterFunc 
+  VA_ContribWithFilterFunc, 
+  VA_ContribSkipFilterFunc, //5:Only process Y <+ X_expr and skip the Q-part
 } vaState;
 
 typedef enum _returnFlag {
@@ -172,12 +175,13 @@ typedef struct _contribElement {
   string_t contrib_lhs;
   string_t contrib_rhs;
   strVec nodes;         //a,c for I(a,c) <+ v(a,c)*2 + v(b,c)
-  strVec depend_nodes;  //a,b,c for above contrib
+  strPairVec depend_nodes;  //[{a,b},{b,c}] for above contrib
 }contribElement;
 
 typedef struct _dependTargInfo {
   int lineNo;
-  strVec dependNodes;
+  //strVec dependNodes;
+  strPairVec dependNodes;
 }dependTargInfo;
 
 typedef struct _valueRange {
@@ -247,6 +251,16 @@ bool item_exists(const T& vcontainer, const Key& x)
     return true;
   else 
     return false;
+}
+
+//remove the redundant item in vector-like container
+template <typename T>
+void item_redundant_remove(std::vector<T>& vcontainer)
+{
+  if(vcontainer.empty())
+    return;
+  std::set<T> s(vcontainer.cbegin(), vcontainer.cend());
+  vcontainer = std::vector<T>(s.cbegin(), s.cend());  
 }
 
 //To check if a std::string `src stars with `targ
