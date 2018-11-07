@@ -575,10 +575,13 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       strVec line_splits = str_split(line, '=', ' ');
       if(line_splits.size() < 2)
       {
-        if(verbose)
-          std::cout << "Ignore: " << line <<std::endl;
         if(src_line_status == 0)
           h_outCxx << line << std::endl;
+        else
+        {
+          if(verbose)
+            std::cout << "Ignore: " << line <<std::endl;
+        }
         isProcessed = true;
         continue;
       }
@@ -586,74 +589,62 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       string_t str_nspace = string_t(n_space, ' ');
       for(auto it=line_splits.begin(); it != line_splits.end(); ++it)
         *it = str_strip(*it, " ", 0);
-      if(str_startswith(line_splits[0], "Icontrib_"))
+      if(str_startswith(line_splits[0], "Icontrib_") || str_startswith(line_splits[0], "Qcontrib_"))
       {
-        //gen codes for I contrib
-        // I(ci,ei) <+ (Ic1)
-        //staticContributions[cogendaNodeID_bi] += Ic1;
-        //staticContributions[cogendaNodeID_ei] -= Ic1;
+        //gen codes for I/Q contrib
         strVec _strVec = str_split(line_splits[0], '_', ' ');
         string_t nodPos,nodNeg,rhsExpr;
         nodPos = _strVec[1];
         if(_strVec.size() >= 3)
+        {
           nodNeg = _strVec[2];
-        if(nodNeg[nodNeg.size()-1] == '+')
-          str_remove_tail(nodNeg, 1);
+          if(nodNeg[nodNeg.size()-1] == '+')
+            str_remove_tail(nodNeg, 1);
+        }
+        else
+        {
+          if(nodPos[nodPos.size()-1] == '+')
+            str_remove_tail(nodPos, 1);
+        }
         
         rhsExpr = line_splits[1];
-        h_outCxx << "//I-contrib..." << std::endl;
-        h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
-        if(_strVec.size() >= 3)
-          h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
-        isProcessed = true;
-        continue;
-      }
-      else if(str_startswith(line_splits[0], "Qcontrib_"))
-      {
+        // I(ci,ei) <+ (Ic1)
+        //staticContributions[cogendaNodeID_bi] += Ic1;
+        //staticContributions[cogendaNodeID_ei] -= Ic1;
+        if(line_splits[0][0] == 'I')
+        {
+          h_outCxx << "//I-contrib..." << std::endl;
+          h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
+          if(_strVec.size() >= 3)
+            h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
+          isProcessed = true;
+          continue;
+        }
+        
         //gen codes for Q contrib as below
         // I(bi,ci) <+ ((ddt((qb1+qbtra))))
         //dynamicContributions[cogendaNodeID_bi] += (((qb1+qbtra)));
         //dynamicContributions[cogendaNodeID_ci] -= (((qb1+qbtra)));
-        strVec _strVec = str_split(line_splits[0], '_', ' ');
-        string_t nodPos,nodNeg,rhsExpr;
-        nodPos = _strVec[1];
-        if(_strVec.size() >= 3)
-          nodNeg = _strVec[2];
-        if(nodNeg[nodNeg.size()-1] == '+')
-          str_remove_tail(nodNeg, 1);
-        
-        rhsExpr = line_splits[1];
-        h_outCxx << "//Q-contrib..." << std::endl;
-        h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
-        if(_strVec.size() >= 3)
-          h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
-        isProcessed = true;
-        continue;
+        else if(line_splits[0][0] == 'Q')
+        {
+          h_outCxx << "//Q-contrib..." << std::endl;
+          h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
+          if(_strVec.size() >= 3)
+            h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
+          isProcessed = true;
+          continue;
+        }
       }
       else
       {
         string_t vprob_rhs=line_splits[1];
-        strVec _typeKeys={"Vprob_","Iprob_"};
-        if(line_splits.size() == 2)
+        strVec _typeKeys={"Vprob_","Iprob_","probeVars[cogendaProbeID_"};
+        if(str_startswith(vprob_rhs, _typeKeys[2]))
         {
-          for(unsigned int i=0; i<_typeKeys.size(); i++)
-          {
-            if(str_startswith(vprob_rhs, _typeKeys[i]))
-            {
-              if(vprob_rhs[vprob_rhs.size()-1] == ';')
-                str_remove_tail(vprob_rhs, 1);
-              str_replace_key(vprob_rhs, _typeKeys[i], _typeKeys[i].substr(0,1)+"_");
-              h_outCxx << str_format("  {} = (probeVars[cogendaProbeID_{}]);\n", line_splits[0], vprob_rhs);
-              if(src_line_status == -1)
-                src_line_status = 0; // the VA module codes start
-              isProcessed = true;
-            }
-            else
-            {
-              h_outCxx << line+";" << std::endl;
-              isProcessed = true;
-            }
-          }
+          if(src_line_status == -1)
+            src_line_status = 0; // the VA module codes start
+          h_outCxx << line << std::endl;
+          isProcessed = true;
           continue;
         }
         else
@@ -666,8 +657,6 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         std::cout << "WARN line not processed: " << line << std::endl;
     }
   }
-#if 0
-#endif /*0*/  
 }
 
 void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
@@ -1009,15 +998,159 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
 }
 
 void 
+genModelProcessParams(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  h_outCxx << "  bool Model::processParams()\n";
+  h_outCxx << "  {\n";
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
+    h_outCxx << str_format("    {} = {}",it->first, it->second.init_value) <<std::endl;
+    if(it->second.has_range)
+    {
+      string_t lower_Op = it->second.lower_Op == vpiGeOp ? ">=" : ">";
+      string_t higher_Op = it->second.higher_Op == vpiLeOp ? "<=" : "<";
+      string_t lbound =  it->second.lower_value != "-inf" ? it->second.lower_value : "NA";
+      string_t ubound =  it->second.higher_value != "inf" ? it->second.higher_value: "NA";
+      string_t _modrange = get_one_range(it->second);
+      if(lbound != "NA" || ubound != "NA")
+      {
+        if (lbound != "NA" && ubound != "NA")
+        {
+          h_outCxx << str_format("  else if ( !({} {} {} && {} {} {} ))\n",
+              it->first, lower_Op, lbound, it->first, higher_Op, ubound);
+        }
+        else if (lbound != "NA")
+        {
+          h_outCxx << str_format("  else if ( !({} {} {}))\n",
+              it->first, lower_Op, lbound);
+        }
+        else if (ubound != "NA")
+        {
+          h_outCxx << str_format("  else if ( !({} {} {}))\n",
+              it->first, lower_Op, ubound);
+        }
+        h_outCxx << str_format("    UserError0(*this) << \"Model Parameter value \" << {} << \" out of range {}\";",it->first, _modrange) << std::endl;
+      }
+    }
+  }
+  h_outCxx << "}\n";
+}
+
+void
+genModelConstructor(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  h_outCxx << "Model::Model(\n";   
+  h_outCxx << "  const Configuration & configuration,\n";
+  h_outCxx << "  const ModelBlock &    model_block,\n";
+  h_outCxx << "  const FactoryBlock &  factory_block)\n";
+  h_outCxx << "  : DeviceModel(model_block, configuration.getModelParameters(), factory_block),\n";
+  unsigned int n_pars = 0;
+  for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
+  {
+    h_outCxx << str_format("    {}({})",it->first, it->second.init_value);
+    if(n_pars++ != vaModuleEntries.m_params.size()-1)
+      h_outCxx << ",";
+    h_outCxx << std::endl;
+  }
+  h_outCxx << "{" << std::endl;
+  // Set params to constant default values (from parTable):
+  h_outCxx << "  setDefaultParams();\n";
+
+  // Set params according to .model line and constant defaults from metadata:
+  h_outCxx << "  setModParams(model_block.params);\n";
+
+  h_outCxx << "  if (!given(\"XYCE_COGENDA_MOD_TEMP\"))\n";
+  h_outCxx << "    cogendaModTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
+
+  // Calculate any parameters specified as expressions:
+
+  h_outCxx << "  updateDependentParameters();\n";
+
+  // calculate dependent (ie computed) params and check for errors:
+  h_outCxx << "  processParams();\n";    
+  h_outCxx << "}\n";
+}
+
+void
+genModelPrintOutInstances(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+  h_outCxx << "std::ostream &Model::printOutInstances(std::ostream &os) const\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  std::vector<Instance*>::const_iterator iter;\n";
+  h_outCxx << "  std::vector<Instance*>::const_iterator first = instanceContainer.begin();\n";
+  h_outCxx << "  std::vector<Instance*>::const_iterator last  = instanceContainer.end();\n";
+  h_outCxx << "  int i;\n";
+  h_outCxx << "  os << std::endl;\n";
+  h_outCxx << "  os << \"  name   model name  Parameters\" << std::endl;\n";
+  h_outCxx << "  for (i=0, iter=first; iter!=last; ++iter, ++i)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    os << \"  \" << i << \": \" << (*iter)->getName() << \"      \";\n";
+  h_outCxx << "    os << getName();\n";
+  h_outCxx << "    os << std::endl;\n";
+  h_outCxx << "    os << std::endl;\n";
+  h_outCxx << "  }\n";
+  h_outCxx << "  os << std::endl;\n";
+  h_outCxx << "  return os;\n";
+  h_outCxx << "}\n";
+}
+
+
+void
+genModelForEachInstance(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+{
+h_outCxx << "void Model::forEachInstance(DeviceInstanceOp &op) const \n";
+h_outCxx << "{\n";
+h_outCxx << "  for (std::vector<Instance *>::const_iterator it = instanceContainer.begin(); it != instanceContainer.end(); ++it)\n";
+h_outCxx << "    op(*it);\n";
+h_outCxx << "}\n";
+}
+
+void 
 genModelMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
 {
   h_outCxx <<"/* class Model member functions */\n";
   h_outCxx << "  //bool Model::processParams\n";
+  genModelProcessParams(vaModuleEntries, h_outCxx);
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //bool Model::processInstanceParams\n";
+  h_outCxx << "bool Model::processInstanceParams()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  std::vector<Instance*>::iterator iter;\n";
+  h_outCxx << "  std::vector<Instance*>::iterator first = instanceContainer.begin();\n";
+  h_outCxx << "  std::vector<Instance*>::iterator last  = instanceContainer.end();\n";
+  h_outCxx << "  for (iter=first; iter!=last; ++iter)\n";
+  h_outCxx << "  {\n";
+  h_outCxx << "    (*iter)->processParams();\n";
+  h_outCxx << "  }\n";
+  h_outCxx << "  return true;\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //Model::Model(..){...}\n";
+  genModelConstructor(vaModuleEntries, h_outCxx);
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //Model::~Model\n";
+  h_outCxx << "Model::~Model()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  std::vector<Instance*>::iterator iterI;\n";
+  h_outCxx << "  std::vector<Instance*>::iterator firstI = instanceContainer.begin ();\n";
+  h_outCxx << "  std::vector<Instance*>::iterator lastI  = instanceContainer.end ();\n";
+  // loop over instances:
+  h_outCxx << "  for (iterI = firstI; iterI != lastI; ++iterI)\n";
+  h_outCxx << "    delete (*iterI);\n";
+  h_outCxx << "}\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //std::ostream &Model::printOutInstances\n";
+  genModelPrintOutInstances(vaModuleEntries, h_outCxx);
+  INSERT_EMPTY_LINE(h_outCxx);
+
   h_outCxx << "  //void Model::forEachInstance()\n";
+  genModelForEachInstance(vaModuleEntries, h_outCxx);
+  INSERT_EMPTY_LINE(h_outCxx);
 }
 
 void 

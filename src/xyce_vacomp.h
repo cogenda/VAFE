@@ -289,6 +289,9 @@ int str_get_number_first_space(const string_t& line);
 
 void str_convert_unit(string_t& src);
 
+string_t 
+get_one_range(valueRange& range);
+
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
     sstrVecDict& analogFuncVars);
