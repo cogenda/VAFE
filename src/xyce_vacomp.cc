@@ -104,6 +104,26 @@ str_strip(const string_t s, const string_t chars=" ", int mode=0)
   return s.substr(begin, end-begin+1);
 }
 
+//remove the tail n chars of the string
+void str_remove_tail(string_t& line, const int n)
+{
+  line.erase(line.size()-n, n); 
+}
+
+//get the leading numbers of space char in a string
+int str_get_number_first_space(const string_t& line)
+{
+  if(!line.size())
+    return 0;
+  unsigned int idx;
+  for(idx=0; idx < line.size(); idx++)
+  {
+    if(line[idx] != ' ')
+      return idx;
+  }
+  return idx;
+}
+
 //split a string into a vector by token1 and token2
 strVec
 str_split(const string_t& line, const char token1, const char token2)
@@ -196,7 +216,7 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
   assert(cnt_arg == res.size());
   //remove the tail ',' in args list
   if(strArgDef[strArgDef.size()-1] == ',')
-    strArgDef.erase(strArgDef.size()-1, 1); 
+    str_remove_tail(strArgDef, 1);
   strPair _anaFuncDefs = {strArgDef,strFuncVarDef};
   return _anaFuncDefs;
 }
@@ -252,13 +272,13 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
     //if(!item_exists(depItem.dependNodes, tagName))
     {
       strPair &_nodePair = depItem.dependNodes.back();
-      if(!depItem.dependNodes.size() || _nodePair.second != UNFILLED)
+      if(!depItem.dependNodes.size() || _nodePair.second != GND)
       {
-        depItem.dependNodes.push_back({tagName,UNFILLED});
+        depItem.dependNodes.push_back({tagName,GND});
       }
       else
       {
-        assert(_nodePair.second == UNFILLED);
+        assert(_nodePair.second == GND);
         _nodePair.second = tagName;
         //check and remove the redundant item
         item_redundant_remove(depItem.dependNodes);
@@ -486,7 +506,7 @@ resolve_block_for(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   strIncr = vpi_resolve_expr_impl(objIncr, vaSpecialItems);
   //remove the tail ';'
   if(strIncr[strIncr.size()-1] == ';')
-    strIncr.erase(strIncr.size()-1, 1); 
+    str_remove_tail(strIncr, 1);
 
   vpiHandle objInit = vpi_handle(vpiForInitStmt, obj); 
   strInit = vpi_resolve_expr_impl(objInit, vaSpecialItems);
@@ -583,7 +603,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   string_t strCond="", strCondElseIf="";
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
-  if(vaSpecialItems.m_isSrcLinesElseIf)
+  if(vaSpecialItems.m_isSrcLinesElseIf>0)
   {
     g_indent_width -= INDENT_UNIT;
     retStr += string_t("else if(").insert(0, g_indent_width, ' ');
@@ -599,17 +619,24 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   if(objIf_body)
   {
     //retStr += "\n";
+    int _obj_type = (int) vpi_get (vpiType, objIf_body);
+    if(_obj_type != vpiIfElse && vaSpecialItems.m_isSrcLinesElseIf>0)
+      vaSpecialItems.m_isSrcLinesElseIf -= 1;
+  
     g_indent_width += INDENT_UNIT;
     retStr += vpi_resolve_expr_impl (objIf_body, vaSpecialItems);
     g_indent_width -= INDENT_UNIT;
-    //retStr += "\n";
+    retStr += "\n";
   }
 
   vpiHandle objCondElseIf = vpi_handle(vpiElseStmt, obj);
   if(objCondElseIf)
   {
     int _obj_type = (int) vpi_get (vpiType, objCondElseIf);
-    vaSpecialItems.m_isSrcLinesElseIf = true;
+    if(_obj_type == vpiIfElse)
+      vaSpecialItems.m_isSrcLinesElseIf += 1;
+    else if (_obj_type == vpiBegin && vaSpecialItems.m_isSrcLinesElseIf>0)
+      vaSpecialItems.m_isSrcLinesElseIf -= 1;
     if(_obj_type != vpiIfElse)
       g_indent_width += INDENT_UNIT;
     strCondElseIf = vpi_resolve_expr_impl (objCondElseIf, vaSpecialItems);
@@ -626,7 +653,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
       retStr += string_t("else\n").insert(0, g_indent_width, ' ');
       retStr += strCondElseIf;
       //_retStr += strCondElseIf.insert(0, g_indent_width, ' ');
-      vaSpecialItems.m_isSrcLinesElseIf = false;
+      //vaSpecialItems.m_isSrcLinesElseIf -= 1;
     }
   }
 }
@@ -703,7 +730,7 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]}); //TODO avoid the duplicated item
   }
   else  //here is analog/system function call
-    retStr = _strType + "(" + concat_vector2string(nodes, ",") + ");";
+    retStr = _strType + "(" + concat_vector2string(nodes, ",") + ")";
   return;
 }
 
@@ -949,8 +976,7 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
         _args.push_back(_retStr);
       }
     }
-    _strLhs  = "Q_ddt_";
-    _strLhs += "contrib_" + concat_vector2string(nodes, "_");
+    _strLhs = "Qcontrib_" + concat_vector2string(nodes, "_");
     _strRhs  = concat_vector2string(_args, "_");
     _retStr = _strLhs + "=" + _strRhs + ";";
     _retStr.insert(0, g_indent_width, ' ');
@@ -1025,9 +1051,16 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == xvpiReference || cur_obj_type == vpiFuncType)
           {
             if(key_exists(va_c_expr_map, strline))
+            {
+              assert(!key_exists(vaSpecialItems.m_params, strline));
               return va_c_expr_map[strline];
+            }
             else
+            {
+            if(key_exists(vaSpecialItems.m_params, strline))
+                return MODEL_DOT + strline;
               return strline;
+            }
           }
           else if(cur_obj_type == vpiConstant)
           {
@@ -1129,7 +1162,7 @@ int
 vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
 {
   vaSpecialItems.current_scope = VA_ModuleTopBlock;
-  vaSpecialItems.m_isSrcLinesElseIf = false;
+  vaSpecialItems.m_isSrcLinesElseIf = 0;
   vaSpecialItems.objPended = 0;
   vaSpecialItems.retFlag = Ret_NORMAL;
   vaSpecialItems.m_needMergDependItem = false;
@@ -1162,7 +1195,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         //get the function name with reture type
         string_t anlogFuncName = (char *)vpi_get_str (vpiName, obj_scan);
         string_t anlogFuncType = (char *)vpi_get_str (vpiFuncType, obj_scan);
-        vaSpecialItems.m_resolvedCcodes.push_back(str_format("/*starts of Analog function {}*/",anlogFuncName));
+        vaSpecialItems.m_resolvedAnaFunCcodes.push_back(str_format("/*starts of Analog function {}*/",anlogFuncName));
         if(anlogFuncType == "real" or anlogFuncType == "integer") //TODO for more types
           anlogFuncType = va_c_expr_map[anlogFuncType];
         vaSpecialItems.m_analogFuncNames.push_back(anlogFuncName);
@@ -1182,12 +1215,12 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         //get function definition: <type> <func_name>(args list)
         string_t analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
           + "(" + anaFuncDefs.first + ")";
-        vaSpecialItems.m_resolvedCcodes.push_back(analogFuncArgDef);
-        vaSpecialItems.m_resolvedCcodes.push_back("{\n");
+        vaSpecialItems.m_resolvedAnaFunCcodes.push_back(analogFuncArgDef);
+        vaSpecialItems.m_resolvedAnaFunCcodes.push_back("{\n");
 
         //get function variables inside: <type1> vars list
         string_t _funcVars=anaFuncDefs.second;
-        vaSpecialItems.m_resolvedCcodes.push_back(_funcVars);
+        vaSpecialItems.m_resolvedAnaFunCcodes.push_back(_funcVars);
 
         //get other vpiStmt with analog function block
         vpiHandle objStmt = vpi_handle(vpiStmt, obj_scan);
@@ -1199,11 +1232,11 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         {
           if((obj_scan_func = vpi_scan_index (objStmt_itr1, _cnt++)) != NULL)
           {
-            vaSpecialItems.m_resolvedCcodes.push_back(
+            vaSpecialItems.m_resolvedAnaFunCcodes.push_back(
               vpi_resolve_expr_impl (obj_scan_func, vaSpecialItems));
           }
         }
-        vaSpecialItems.m_resolvedCcodes.push_back(str_format("}\n/*ends of Analog function {}*/",anlogFuncName));
+        vaSpecialItems.m_resolvedAnaFunCcodes.push_back(str_format("}\n/*ends of Analog function {}*/",anlogFuncName));
       }
     }
   }
@@ -1220,7 +1253,8 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   //get module level variable definition lines
   set_map_iteration_by_name(obj, vpiVariables, vaSpecialItems.m_moduleVars, vaSpecialItems);
   setModuleArgDef(vaSpecialItems.m_moduleArgDef, vaSpecialItems.m_moduleVars);
-  vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_moduleArgDef);
+  //Don't insert the model header into the main C codes
+  //vaSpecialItems.m_resolvedCcodes.push_back(vaSpecialItems.m_moduleArgDef);
  
   //get branch definition if there are some
   //itr vpiBranch -> obj vpiBranch[n] ->vpiPosNode & vpiNegNode
@@ -1248,12 +1282,20 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
   // process src lines
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
   std::cout << "=====Final C codes=====" << std::endl;
-  for (strVec::iterator it = vaSpecialEntries.m_resolvedCcodes.begin (); 
-      it != vaSpecialEntries.m_resolvedCcodes.end (); ++it)
+  for(unsigned int idx=0; idx<2; idx++)
   {
-    std::cout << *it;
-    if((*it)[(*it).size()-1] != '\n')
-      std::cout << std::endl;
+    strVec *_codeVec;
+    if(idx)
+      _codeVec = &vaSpecialEntries.m_resolvedCcodes;
+    else
+      _codeVec = &vaSpecialEntries.m_resolvedAnaFunCcodes;
+    for (strVec::iterator it = _codeVec->begin (); 
+        it != _codeVec->end (); ++it)
+    {
+      std::cout << *it;
+      if((*it)[(*it).size()-1] != '\n')
+        std::cout << std::endl;
+    }
   }
   paramDict mpars = vaSpecialEntries.m_params;
   for (paramDict::iterator it = mpars.begin (); it != mpars.end (); ++it)

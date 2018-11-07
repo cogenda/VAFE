@@ -199,8 +199,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   }
 
   //xyceDeclareProbeConstants
-  //admsProbeID_%(nature)_%(branch/pnode)_%(branch/nnode)"
-  //admsProbeID_I_%(pnode)_%(nnode)"
+  //cogendaProbeID_%(nature)_%(branch/pnode)_%(branch/nnode)"
+  //cogendaProbeID_I_%(pnode)_%(nnode)"
   h_outheader << "    //Probe Constants\n";
   _idx=0;
   {
@@ -209,7 +209,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
     for(auto it=vaModuleEntries.m_probeConstants.begin(); 
       it != vaModuleEntries.m_probeConstants.end(); ++it)
     {
-      //out code: static const int admsProbeID_V_t_ti = 0;
+      //out code: static const int cogendaProbeID_V_t_ti = 0;
       string_t etype = it->first;
       for(auto itv=it->second.begin(); itv != it->second.end(); ++itv)
       {
@@ -265,9 +265,9 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   INSERT_EMPTY_LINE(h_outheader);
 
     // vt at \$temperature;
-    //double adms_vt_nom;  //TODO?
+    //double cogenda_vt_nom;  //TODO?
 
-  h_outheader << "    // This one is for the annoying bogus \"XyceADMSInstTemp\" parameter\n"; //TODO
+  h_outheader << "    // This one is for the annoying bogus \"XycecogendaInstTemp\" parameter\n"; //TODO
   h_outheader << "    // that we need so we can set it from the device manager when there's no\n";
   h_outheader << "    // \"TEMP\" parameter to use\n";
   h_outheader << "    double cogendaInstTemp;" <<std::endl;
@@ -444,63 +444,230 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
 }
 
+//generate C-codes for G/C stamping elements, 
+//type=Gptr    G element with pointer
+//type=Goffest G element with matrix
+//type=Cptr    C element with pointer
+//type=Coffest C element with matrix
 void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string_t type)
 {
     //note: loop for all Flow's contribs and depend notes to combinate the Jacob element
+    strVec _stampGCNodesRec;
+    string_t _curNodesConcat;
     for(auto it=vaModuleEntries.m_contribs.begin(); 
       it != vaModuleEntries.m_contribs.end(); ++it)
     {
       for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
+      {
         for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
         {
-          for(int idx=0; idx<2; idx++)
+          string_t node_col1 = node_col->first, node_col2 = node_col->second;
+          _curNodesConcat =  *node_row + node_col1 + node_col2;
+          if(item_exists(_stampGCNodesRec, _curNodesConcat))
+            continue;
+          else
+            _stampGCNodesRec.push_back(_curNodesConcat);
+          assert(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col1,node_col2)));
+          if(type == "Gptr")
           {
-            string_t _nodPos="", _nodNeg="", _nodColPos="", _nodColNeg="",_node_col;
-            if(!idx)
-              _node_col = node_col->first;
-            else
-              _node_col = node_col->second;
-            if(_node_col == UNFILLED)
-              continue;
-            if(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",*node_row,_node_col)))
-            {
-              _nodPos    = *node_row;
-              _nodNeg    = _node_col;
-              _nodColPos = *node_row;
-              _nodColNeg = _node_col;
-            }
-            else if(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_GND",_node_col)))
-            {
-              _nodPos    = *node_row;
-              _nodNeg    = _node_col;
-              _nodColPos = *node_row;
-              _nodColNeg = "GND";
-            }
-            else
-              continue;
-            if(type == "Gptr")
-            {
-              //(*f_bi_Equ_ti_Node_Ptr) +=  +staticContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
-              h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
-            }
-            else if(type == "Goffest")
-            {
-              //dFdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +staticContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
-              h_outCxx << str_format("  dFdx[li_{}][A_{}_Equ_{}_NodeOffset] +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
-            }
-            else if(type == "Cptr")
-            {
-              //(*q_bi_Equ_ti_Node_Ptr) +=  +dynamicContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
-              h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg) << std::endl;
-            }
-            else if(type == "Coffest")
-            {
-              //dQdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +dynamicContributions[admsNodeID_bi].dx(admsProbeID_V_ti_GND);
-              h_outCxx << str_format("  dQdx[li_{}][A_{}_Equ_{}_NodeOffset] +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",_nodPos,_nodPos,_nodNeg,_nodPos,_nodColPos,_nodColNeg)<< std::endl;
-            }
+            //(*f_bi_Equ_ti_Node_Ptr) +=  +staticContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
+            h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
+            h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  -staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
+          }
+          else if(type == "Goffest")
+          {
+            //dFdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +staticContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
+            h_outCxx << str_format("  dFdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
+            h_outCxx << str_format("  dFdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  -staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
+          }
+          else if(type == "Cptr")
+          {
+            //(*q_bi_Equ_ti_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
+            h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
+            h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  -dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
+          }
+          else if(type == "Coffest")
+          {
+            //dQdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +dynamicContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
+            h_outCxx << str_format("  dQdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col1,*node_row,node_col1,node_col2)<< std::endl;
+            h_outCxx << str_format("  dQdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  -dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col2,*node_row,node_col1,node_col2)<< std::endl;
           }
         }
+      }
     }
+}
+
+//generate C-codes for VA module codes, model="model" for class Model "instance" for class Instance
+void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string_t mode="model")
+{
+  h_outCxx << "bool Instance::updateIntermediateVars()\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  bool bsuccess=true;\n";
+  h_outCxx << "  Linear::Vector * solVectorPtr = extData.nextSolVectorPtr;\n";
+
+  h_outCxx << "  // Local variables\n";
+  //lookup the module variables in depend map to determine if it needs CogendaFadType
+  for(auto imap=vaModuleEntries.m_moduleVars.begin(); imap != vaModuleEntries.m_moduleVars.end(); ++imap)
+  {
+    for(auto ivec=imap->second.begin(); ivec != imap->second.end(); ++ivec)
+    {
+      string_t varType = imap->first;
+      string_t varName = *ivec;
+      bool isFadType = false; 
+      if(key_exists(vaModuleEntries.m_dependTargMap, varName))
+      {
+        if(vaModuleEntries.m_dependTargMap[varName].size() > 0)
+          isFadType = true;
+      }
+      if(isFadType)
+        h_outCxx << str_format("  CogendaFadType {};", varName) << std::endl;
+      else
+        h_outCxx << str_format("  {} {};", varType, varName) << std::endl;
+    }
+  }
+  int n_probeVars = vaModuleEntries.m_probeConstants.size();
+  int n_probeNodes=vaModuleEntries.m_moduleNets.size();
+  h_outCxx << "  // set the sizes of the Fad arrays:\n";
+  h_outCxx << str_format("  if (probeVars.size() != ({}))\n",n_probeVars);
+  h_outCxx << "  {\n";
+  h_outCxx << str_format("    probeVars.resize({});\n",n_probeVars);
+  h_outCxx << str_format("    staticContributions.resize({}+0);\n",n_probeNodes);
+  h_outCxx << str_format("    dynamicContributions.resize({}+0);\n",n_probeNodes);
+  h_outCxx << "  }\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  //Not support Noise yet, ignored.
+  //noiseContribsPower.resize(11); 
+  //noiseContribsExponent.resize(11);
+  
+  // initialize contributions to zero (automatically sets derivatives to zero)
+  h_outCxx << str_format("  for (int i=0; i < {}+0 ; ++i)\n",n_probeNodes);
+  h_outCxx << "  {\n";
+  h_outCxx << "     staticContributions[i]=0;\n";
+  h_outCxx << "     dynamicContributions[i]=0;\n";
+  h_outCxx << "  }\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  // extract solution variables and set as Fad independent variables.
+  for(auto ivec=vaModuleEntries.m_probeConstants.begin(); ivec != vaModuleEntries.m_probeConstants.end(); ++ivec)
+  {
+    string_t etype,npos,nneg;
+    etype = ivec->first;
+    for(auto it=ivec->second.begin(); it != ivec->second.end(); ++it)
+    {
+      npos = it->first;
+      nneg = it->second;
+      h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_{}] - (*solVectorPtr)[li_{}];\n",etype,npos,nneg,npos,nneg);
+      h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}].diff(cogendaProbeID_{}_{}_{},{});\n",etype,npos,nneg,etype,npos,nneg,n_probeVars);
+    }
+  }
+  INSERT_EMPTY_LINE(h_outCxx);
+// -- code converted from analog/code block
+  for(auto ivec=vaModuleEntries.m_resolvedCcodes.begin(); ivec != vaModuleEntries.m_resolvedCcodes.end(); ++ivec)
+  {
+    strVec lines = str_split(*ivec, '\n', '\n');
+    int src_line_status = -1;
+    bool isProcessed = false;
+    for(unsigned int idx=0; idx < lines.size(); idx++)
+    {
+      isProcessed = false;
+      string_t line = lines[idx];
+      strVec line_splits = str_split(line, '=', ' ');
+      if(line_splits.size() < 2)
+      {
+        if(verbose)
+          std::cout << "Ignore: " << line <<std::endl;
+        if(src_line_status == 0)
+          h_outCxx << line << std::endl;
+        isProcessed = true;
+        continue;
+      }
+      int n_space = str_get_number_first_space(line);
+      string_t str_nspace = string_t(n_space, ' ');
+      for(auto it=line_splits.begin(); it != line_splits.end(); ++it)
+        *it = str_strip(*it, " ", 0);
+      if(str_startswith(line_splits[0], "Icontrib_"))
+      {
+        //gen codes for I contrib
+        // I(ci,ei) <+ (Ic1)
+        //staticContributions[cogendaNodeID_bi] += Ic1;
+        //staticContributions[cogendaNodeID_ei] -= Ic1;
+        strVec _strVec = str_split(line_splits[0], '_', ' ');
+        string_t nodPos,nodNeg,rhsExpr;
+        nodPos = _strVec[1];
+        if(_strVec.size() >= 3)
+          nodNeg = _strVec[2];
+        if(nodNeg[nodNeg.size()-1] == '+')
+          str_remove_tail(nodNeg, 1);
+        
+        rhsExpr = line_splits[1];
+        h_outCxx << "//I-contrib..." << std::endl;
+        h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
+        if(_strVec.size() >= 3)
+          h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
+        isProcessed = true;
+        continue;
+      }
+      else if(str_startswith(line_splits[0], "Qcontrib_"))
+      {
+        //gen codes for Q contrib as below
+        // I(bi,ci) <+ ((ddt((qb1+qbtra))))
+        //dynamicContributions[cogendaNodeID_bi] += (((qb1+qbtra)));
+        //dynamicContributions[cogendaNodeID_ci] -= (((qb1+qbtra)));
+        strVec _strVec = str_split(line_splits[0], '_', ' ');
+        string_t nodPos,nodNeg,rhsExpr;
+        nodPos = _strVec[1];
+        if(_strVec.size() >= 3)
+          nodNeg = _strVec[2];
+        if(nodNeg[nodNeg.size()-1] == '+')
+          str_remove_tail(nodNeg, 1);
+        
+        rhsExpr = line_splits[1];
+        h_outCxx << "//Q-contrib..." << std::endl;
+        h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
+        if(_strVec.size() >= 3)
+          h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
+        isProcessed = true;
+        continue;
+      }
+      else
+      {
+        string_t vprob_rhs=line_splits[1];
+        strVec _typeKeys={"Vprob_","Iprob_"};
+        if(line_splits.size() == 2)
+        {
+          for(unsigned int i=0; i<_typeKeys.size(); i++)
+          {
+            if(str_startswith(vprob_rhs, _typeKeys[i]))
+            {
+              if(vprob_rhs[vprob_rhs.size()-1] == ';')
+                str_remove_tail(vprob_rhs, 1);
+              str_replace_key(vprob_rhs, _typeKeys[i], _typeKeys[i].substr(0,1)+"_");
+              h_outCxx << str_format("  {} = (probeVars[cogendaProbeID_{}]);\n", line_splits[0], vprob_rhs);
+              if(src_line_status == -1)
+                src_line_status = 0; // the VA module codes start
+              isProcessed = true;
+            }
+            else
+            {
+              h_outCxx << line+";" << std::endl;
+              isProcessed = true;
+            }
+          }
+          continue;
+        }
+        else
+        {
+          h_outCxx << line << std::endl;
+          isProcessed = true;
+        }
+      }
+      if(verbose && !isProcessed && src_line_status == 0)
+        std::cout << "WARN line not processed: " << line << std::endl;
+    }
+  }
+#if 0
+#endif /*0*/  
 }
 
 void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
@@ -536,7 +703,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
       h_outCxx << str_format("    {}({}),", *it, initVal) <<std::endl;
     }
   }
-  h_outCxx<<"      admsTemperature(getDeviceOptions().temp.getImmutableValue<double>())\n";
+  h_outCxx<<"      cogendaTemperature(getDeviceOptions().temp.getImmutableValue<double>())\n";
   //starts Instance::Instance() body
   h_outCxx << "{\n";
   h_outCxx << str_format("  numExtVars = {};",instanceInfoCxx.numExtVars) <<std::endl;
@@ -567,7 +734,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   
     // Real bogosity here...
   h_outCxx << "  if (!given(\"XYCE_COGENDA_INST_TEMP\"))\n";
-  h_outCxx << "    admsInstTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
+  h_outCxx << "    cogendaInstTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
   INSERT_EMPTY_LINE(h_outCxx);
   
     //calculate any parameters specified as expressions
@@ -686,7 +853,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     string_t _strtmp = instanceInfoCxx.m_variables.at(it);
     strVec node_names = str_split(_strtmp, '_','_');
-    h_outCxx << str_format("  jacLoc = pairToJacStampMap[IntPair(admsNodeID_{},admsNodeID_{})];",node_names[1],node_names[3])<<std::endl;
+    h_outCxx << str_format("  jacLoc = pairToJacStampMap[IntPair(cogendaNodeID_{},cogendaNodeID_{})];",node_names[1],node_names[3])<<std::endl;
     h_outCxx << str_format("  {} = jacLIDVec[jacLoc.first][jacLoc.second];",_strtmp)<<std::endl;
   }
   h_outCxx << "}\n";
@@ -786,8 +953,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   
   h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
   h_outCxx << "{\n";
-  h_outCxx << "  admsTemperature = temperatureTemp;\n";
-  h_outCxx << "  adms_vt_nom = adms_vt(temperatureTemp);\n"; //TODO??
+  h_outCxx << "  cogendaTemperature = temperatureTemp;\n";
+  h_outCxx << "  cogenda_vt_nom = cogenda_vt(temperatureTemp);\n"; //TODO??
   h_outCxx << "  return true;\n";
   h_outCxx << "}\n";  
   INSERT_EMPTY_LINE(h_outCxx);
@@ -838,7 +1005,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "}\n";  
   
   h_outCxx << "  //bool Instance::updateIntermediateVars\n";
-  //
+  genModelEvalBody(vaModuleEntries, h_outCxx, "instance");
 }
 
 void 

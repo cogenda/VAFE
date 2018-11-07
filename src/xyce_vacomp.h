@@ -23,6 +23,7 @@
 #define UNDEF -99999
 #define UNFILLED "__UNFILLED__"
 #define GND "GND"
+#define MODEL_DOT "model_."
 
 struct _dependTargInfo;
 struct _valueRange;
@@ -200,6 +201,7 @@ typedef struct _vaElement {
   sstrVecDict m_branches;
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
+  strVec m_resolvedAnaFunCcodes;    
   strVec m_modulePorts;    
   strVec m_moduleNets;    
   string_t m_moduleArgDef;
@@ -211,7 +213,7 @@ typedef struct _vaElement {
   //current handling va code scope 
   vaState current_scope;  
   vpiHandle objPended;
-  bool m_isSrcLinesElseIf;    
+  int m_isSrcLinesElseIf;    
   bool m_needProcessDepend;
   //merge the depend node list when a LHS within a switch-case or if-else block
   bool m_needMergDependItem;
@@ -278,6 +280,12 @@ str_replace_key(string_t& src, const string_t& from, const string_t& to);
 //split a string into a vector by token1 and token2
 strVec
 str_split(const string_t& line, const char token1, const char token2);
+
+//remove the tail n chars of the string
+void str_remove_tail(string_t& line, const int n);
+
+//get the leading numbers of space char in a string
+int str_get_number_first_space(const string_t& line);
 
 void str_convert_unit(string_t& src);
 
