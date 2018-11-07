@@ -12,7 +12,7 @@ LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
 EXE:=vams.exe
-VAfiles:=switchcase.va diode.va ifelse.va operats.va xor2.va contrib.va macro.va vco.va branches.va
+VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va contrib.va macro.va vco.va branches.va
 DEBUG ?= 1
 ifeq ($(DEBUG),1)
     CFLAGS += -DDEBUG -ggdb
