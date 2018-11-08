@@ -910,6 +910,7 @@ resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecial
     _retStr.insert(0, g_indent_width, ' ');
     retStr += _retStr;
     vaSpecialItems.m_resolvedInitStepCcodes.push_back(retStr);
+    retStr = ""; //not insert into module container
     return;
   }
   else

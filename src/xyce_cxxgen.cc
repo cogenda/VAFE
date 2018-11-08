@@ -582,9 +582,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
 
   // codes converted from analog begin...end block within the module
   // first for @(initial_step), then main module code
-  strVec &_codeVec = vaModuleEntries.m_resolvedInitStepCcodes;
-  for (strVec::iterator ivec = _codeVec.begin (); 
-      ivec != _codeVec.end (); ++ivec)
+  strVec *_codeVec = &vaModuleEntries.m_resolvedInitStepCcodes;
+  for (strVec::iterator ivec = _codeVec->begin (); 
+      ivec != _codeVec->end (); ++ivec)
   {
     h_outCxx << *ivec;
     if((*ivec)[(*ivec).size()-1] != '\n')
@@ -592,9 +592,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   }
   INSERT_EMPTY_LINE(h_outCxx);
 
-  _codeVec = vaModuleEntries.m_resolvedCcodes;
-  for (strVec::iterator ivec = _codeVec.begin (); 
-      ivec != _codeVec.end (); ++ivec)
+  _codeVec = &vaModuleEntries.m_resolvedCcodes;
+  for (strVec::iterator ivec = _codeVec->begin (); 
+      ivec != _codeVec->end (); ++ivec)
   {
     strVec lines = str_split(*ivec, '\n', '\n');
     int src_line_status = -1;
