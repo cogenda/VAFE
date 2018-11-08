@@ -24,6 +24,8 @@
 #define UNFILLED "__UNFILLED__"
 #define GND "GND"
 #define MODEL_DOT "model_."
+#define TEMPLATE_TYPE "GenericT"
+#define ADVAR_TYPE "CogendaFadType"
 
 struct _dependTargInfo;
 struct _valueRange;
@@ -215,6 +217,7 @@ typedef struct _vaElement {
   vpiHandle objPended;
   int m_isSrcLinesElseIf;    
   bool m_needProcessDepend;
+  bool m_isUseTemplateTypeAnalogFunc; //use C++ template function in *.h file for AnalogFunctions
   //merge the depend node list when a LHS within a switch-case or if-else block
   bool m_needMergDependItem;
   int lineNo_ifelse_case;
@@ -294,7 +297,7 @@ get_one_range(valueRange& range);
 
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
-    sstrVecDict& analogFuncVars);
+    sstrVecDict& analogFuncVars, bool isTemplateType);
 
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)

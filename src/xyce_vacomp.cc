@@ -174,9 +174,18 @@ str_replace_key(string_t& src, const string_t& from, const string_t& to)
   return isReplaced;
 }
 
+//get the a range variable's plain string,e.g., [4, inf)
+string_t 
+get_one_range(valueRange& range)
+{
+  string_t lower_Op = range.lower_Op == vpiGeOp ? "[" : "(";
+  string_t higher_Op = range.higher_Op == vpiLeOp ? "]" : ")";
+  return lower_Op + range.lower_value + ":" + range.higher_value + higher_Op;
+}
+
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
-    sstrVecDict& analogFuncVars)
+    sstrVecDict& analogFuncVars, bool isTemplateType)
 {
   strVec res = str_split(analogFuncArgs, ',', ' ');
   string_t strArgDef("");
@@ -190,12 +199,15 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
       itMap != analogFuncVars.end (); ++itMap)
   {
     idx_var = 0;
+    string_t myType = itMap->first;
+    if(isTemplateType)
+      myType = string_t(TEMPLATE_TYPE);
     for (strVec::iterator itVar = itMap->second.begin (); itVar != itMap->second.end (); ++itVar)
     {
       if (find_item_container(res, *itVar))
         //if the key matches arg 
       {
-        strArgDef += itMap->first + " " + *itVar;
+        strArgDef += myType + " " + *itVar;
         strArgDef += ",";
         cnt_arg += 1;
       }
@@ -203,7 +215,7 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
         //Not match into vars list
       {
         if(idx_var == 0)
-          strFuncVarDef += itMap->first + " ";
+          strFuncVarDef += myType + " ";
         strFuncVarDef += *itVar;
         if (itVar != itMap->second.end()-1)
           strFuncVarDef += ",";
@@ -699,6 +711,7 @@ void
 resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t _strType = (char *) vpi_get_str (vpiName, obj);
+  string_t funcName = _strType;
   std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
@@ -723,14 +736,28 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
   }
   if(_strType == "V" || _strType == "I")
   {
-    retStr = _strType + "prob_" + concat_vector2string(nodes, "_");
+    //retStr = _strType + "prob_" + concat_vector2string(nodes, "_");
+    if(nodes.size() == 2)
+      retStr = str_format("probeVars[cogendaProbeID_{}_{}_{}]",_strType,nodes[0],nodes[1]);
+    else
+      retStr = str_format("probeVars[cogendaProbeID_{}_{}]",_strType,nodes[0]);
     assert(nodes.size() <= 2);
     if(nodes.size() < 2)
       nodes.push_back(GND);
     vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]}); //TODO avoid the duplicated item
   }
   else  //here is analog/system function call
-    retStr = _strType + "(" + concat_vector2string(nodes, ",") + ")";
+  {
+    if(vaSpecialItems.m_isUseTemplateTypeAnalogFunc)
+    {
+      if(vaSpecialItems.current_scope != VA_AnalogFunctionDef)
+        retStr = str_format("AnalogFunctions::{}<{}>({})",funcName,ADVAR_TYPE, concat_vector2string(nodes, ","));
+      else
+        retStr = str_format("{}<{}>({})",funcName,TEMPLATE_TYPE,concat_vector2string(nodes, ","));
+    }
+    else
+      retStr = str_format("{}({})",funcName,concat_vector2string(nodes, ","));
+  }
   return;
 }
 
@@ -1167,6 +1194,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.retFlag = Ret_NORMAL;
   vaSpecialItems.m_needMergDependItem = false;
   vaSpecialItems.lineNo_ifelse_case = UNDEF;
+  vaSpecialItems.m_isUseTemplateTypeAnalogFunc = true;
   vpiHandle obj;
   int cur_obj_type = (int) vpi_get (vpiType, root);
   if(cur_obj_type == vpiModule)
@@ -1181,6 +1209,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
     assert(0);
 
   //process AnalogFunction block
+  vaSpecialItems.current_scope = VA_AnalogFunctionDef;
   vaSpecialItems.m_needProcessDepend = false;
   vpiHandle obj_scan, objStmt_itr = vpi_iterate(vpiAnalogFunction, obj);
   int size = vpi_get (vpiSize, objStmt_itr);
@@ -1197,7 +1226,10 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
         string_t anlogFuncType = (char *)vpi_get_str (vpiFuncType, obj_scan);
         vaSpecialItems.m_resolvedAnaFunCcodes.push_back(str_format("/*starts of Analog function {}*/",anlogFuncName));
         if(anlogFuncType == "real" or anlogFuncType == "integer") //TODO for more types
-          anlogFuncType = va_c_expr_map[anlogFuncType];
+        {
+          if(!vaSpecialItems.m_isUseTemplateTypeAnalogFunc)
+            anlogFuncType = va_c_expr_map[anlogFuncType];
+        }
         vaSpecialItems.m_analogFuncNames.push_back(anlogFuncName);
 
         //get the arguments of AnalogFunction
@@ -1210,10 +1242,15 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
             analogFuncVars, vaSpecialItems);
         string_t s_analogFuncIOdef= concat_vector2string(analogFuncIOdef,",");
         strPair anaFuncDefs = 
-          getAnalogFuncArgDef(s_analogFuncIOdef, analogFuncVars);
+          getAnalogFuncArgDef(s_analogFuncIOdef, analogFuncVars, vaSpecialItems.m_isUseTemplateTypeAnalogFunc);
 
         //get function definition: <type> <func_name>(args list)
-        string_t analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
+        string_t analogFuncArgDef;
+        if(vaSpecialItems.m_isUseTemplateTypeAnalogFunc)
+          analogFuncArgDef = str_format("template<typename {}> {} ",TEMPLATE_TYPE,TEMPLATE_TYPE)
+            + anlogFuncName + "(" + anaFuncDefs.first + ")";
+        else
+          analogFuncArgDef = anlogFuncType + " " + anlogFuncName 
           + "(" + anaFuncDefs.first + ")";
         vaSpecialItems.m_resolvedAnaFunCcodes.push_back(analogFuncArgDef);
         vaSpecialItems.m_resolvedAnaFunCcodes.push_back("{\n");
@@ -1241,6 +1278,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
     }
   }
   //process module block
+  vaSpecialItems.current_scope = VA_ModuleTopBlock;
   vaSpecialItems.m_needProcessDepend = true;
   vaSpecialItems.m_moduleName = (char *) vpi_get_str(vpiName, obj);
   //get the port and all nodes info

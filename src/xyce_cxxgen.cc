@@ -234,11 +234,11 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   //xyceDeclareFadArrays
   h_outheader << "    //FadArrays\n";
   h_outheader << " // Arrays to hold probes\n";
-  h_outheader << " std::vector < CogendaFadType > probeVars;" <<std::endl;
+  h_outheader << str_format(" std::vector < {} > probeVars;",ADVAR_TYPE) <<std::endl;
   h_outheader << " // Arrays to hold contributions\n";
   h_outheader << " // dynamic contributions are differentiated w.r.t time\n";
-  h_outheader << " std::vector < CogendaFadType > staticContributions;" <<std::endl;
-  h_outheader << " std::vector < CogendaFadType > dynamicContributions;" <<std::endl;
+  h_outheader << str_format(" std::vector < {} > staticContributions;",ADVAR_TYPE) <<std::endl;
+  h_outheader << str_format(" std::vector < {} > dynamicContributions;",ADVAR_TYPE) <<std::endl;
   
   if(n_whitenoise >0 || n_flickernoise >0)
   {
@@ -359,6 +359,21 @@ CgenHeaderClassModel(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "};" <<std::endl;
 }
 
+void
+CgenHeaderAnalogBlock(vaElement& vaModuleEntries, std::ofstream& h_outheader)
+{
+  h_outheader << "namespace AnalogFunctions{" << std::endl;
+  strVec *_codeVec = &vaModuleEntries.m_resolvedAnaFunCcodes;
+  for (strVec::iterator it = _codeVec->begin (); 
+      it != _codeVec->end (); ++it)
+  {
+    h_outheader << *it;
+    if((*it)[(*it).size()-1] != '\n')
+      h_outheader << std::endl;
+  }
+  h_outheader << "} //namespace AnalogFunctions"<< std::endl;
+}
+
 returnFlag
 CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
 {
@@ -380,7 +395,7 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   h_outheader << "namespace Device {" << std::endl;
   h_outheader << str_format("namespace COGENDA_{} {", moduleName) << std::endl;
   h_outheader << "// This typedef is for our automatic differentiation:" << std::endl;
-  h_outheader << str_format("typedef Sacado::Fad::SFad<double,{}> CogendaFadType;", numberProbes) << std::endl;
+  h_outheader << str_format("typedef Sacado::Fad::SFad<double,{}> {};", numberProbes, ADVAR_TYPE) << std::endl;
   h_outheader << std::endl;
   h_outheader << "class Model;" << std::endl;
   h_outheader << "class Instance;" << std::endl;
@@ -404,6 +419,8 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   CgenHeaderClassInstance(vaModuleEntries,h_outheader);
   //class Model
   CgenHeaderClassModel(vaModuleEntries,h_outheader);
+  //name space ananlog function
+  CgenHeaderAnalogBlock(vaModuleEntries,h_outheader);
   h_outheader << "void registerDevice();"<< std::endl;
   h_outheader << str_format("} // namespace COGENDA_{}", moduleName) << std::endl;
   h_outheader << "} // namespace Device"<< std::endl;
@@ -520,7 +537,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
           isFadType = true;
       }
       if(isFadType)
-        h_outCxx << str_format("  CogendaFadType {};", varName) << std::endl;
+        h_outCxx << str_format("  {} {};", ADVAR_TYPE,varName) << std::endl;
       else
         h_outCxx << str_format("  {} {};", varType, varName) << std::endl;
     }
@@ -562,8 +579,22 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
     }
   }
   INSERT_EMPTY_LINE(h_outCxx);
-// -- code converted from analog/code block
-  for(auto ivec=vaModuleEntries.m_resolvedCcodes.begin(); ivec != vaModuleEntries.m_resolvedCcodes.end(); ++ivec)
+
+  // codes converted from analog begin...end block within the module
+  // first for @(initial_step), then main module code
+  strVec &_codeVec = vaModuleEntries.m_resolvedInitStepCcodes;
+  for (strVec::iterator ivec = _codeVec.begin (); 
+      ivec != _codeVec.end (); ++ivec)
+  {
+    h_outCxx << *ivec;
+    if((*ivec)[(*ivec).size()-1] != '\n')
+      h_outCxx << std::endl;
+  }
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  _codeVec = vaModuleEntries.m_resolvedCcodes;
+  for (strVec::iterator ivec = _codeVec.begin (); 
+      ivec != _codeVec.end (); ++ivec)
   {
     strVec lines = str_split(*ivec, '\n', '\n');
     int src_line_status = -1;
