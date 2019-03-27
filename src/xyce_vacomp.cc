@@ -740,7 +740,7 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     if(nodes.size() == 2)
       retStr = str_format("probeVars[cogendaProbeID_{}_{}_{}]",_strType,nodes[0],nodes[1]);
     else
-      retStr = str_format("probeVars[cogendaProbeID_{}_{}]",_strType,nodes[0]);
+      retStr = str_format("probeVars[cogendaProbeID_{}_{}_{}]",_strType,nodes[0],GND);
     assert(nodes.size() <= 2);
     if(nodes.size() < 2)
       nodes.push_back(GND);
@@ -1374,8 +1374,8 @@ CxxGenFiles (vpiHandle root)
   vpiHandle obj = vpi_iterator_by_index (root, vpiObj);
   vpiHandle topHandle = vpi_handle (vpiObj, obj);
   vpi_gen_ccode (topHandle, vaModuleEntries);
-  string_t fHppName = str_format("N_DEV_COGENDA_{}.h", vaModuleEntries.m_moduleName);
-  string_t fCxxName = str_format("N_DEV_COGENDA_{}.C", vaModuleEntries.m_moduleName);
+  string_t fHppName = str_format("{}.h", vaModuleEntries.m_moduleName);
+  string_t fCxxName = str_format("{}.C", vaModuleEntries.m_moduleName);
   returnFlag retH,retC;
   retH = CgenHeader(vaModuleEntries, fHppName);
   retC = CgenImplement(vaModuleEntries, fCxxName);

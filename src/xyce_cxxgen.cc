@@ -24,7 +24,7 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"// ---------- Macros Definitions ----------" <<std::endl;
   h_outheader <<"#define KOVERQ        8.61734e-05" <<std::endl;
   h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
-  h_outheader <<"#define _VT_ ((ckt->temperature) * KOVERQ)" <<std::endl;
+  h_outheader <<"#define _VT_(T) ((T) * KOVERQ)" <<std::endl;
   h_outheader <<"#define _TEMPER_ (ckt->temperature)" <<std::endl;
   h_outheader <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
   h_outheader << std::endl;
@@ -89,7 +89,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   }
 
   INSERT_EMPTY_LINE(h_outheader);
-  if(n_whitenoise >0 || n_flickernoise >0)
+  if(IGNORE_NOISE != 1)
+  //if(n_whitenoise >0 || n_flickernoise >0)
   {
     h_outheader << "    int getNumNoiseSources () const;" <<std::endl;
     h_outheader << "    void setupNoiseSources (Xyce::Analysis::NoiseData & noiseData);" <<std::endl;
@@ -149,7 +150,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
             nodePair = {*node_row, node_col->first};
           else
             nodePair = {*node_row, node_col->second};
-          if(nodePair.second == UNFILLED)
+          if(nodePair.second == GND)
             continue;
           if(item_exists(_recodNodeMtrix, nodePair))
             continue;
@@ -262,6 +263,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    // set it in updateTemperature, and initialize it to whatever\n";
   h_outheader << "    // is in devOptions when the instance is constructed.\n";
   h_outheader << "    double cogendaTemperature;" <<std::endl;
+  h_outheader << "    double cogenda_vt_nom;" <<std::endl;
   INSERT_EMPTY_LINE(h_outheader);
 
     // vt at \$temperature;
@@ -434,7 +436,7 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
   h_outCxx << "//-------------------------------------------------------------------------" <<std::endl;
   h_outCxx <<"// ----------   Xyce Includes in Cxx ----------" <<std::endl;
   h_outCxx <<"#include <Xyce_config.h>" <<std::endl;
-  h_outCxx <<str_format("#include \"N_DEV_COGENDA_{}.h\"", devName) <<std::endl;
+  h_outCxx <<str_format("#include \"{}.h\"", devName) <<std::endl;
   INSERT_EMPTY_LINE(h_outCxx);
   h_outCxx <<"#include <N_DEV_Const.h>" <<std::endl;
   h_outCxx <<"#include <N_DEV_DeviceOptions.h>" <<std::endl;
@@ -480,6 +482,8 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
         {
           string_t node_col1 = node_col->first, node_col2 = node_col->second;
           _curNodesConcat =  *node_row + node_col1 + node_col2;
+          if(node_col1 == GND || node_col2 == GND)
+            continue;
           if(item_exists(_stampGCNodesRec, _curNodesConcat))
             continue;
           else
@@ -574,6 +578,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
     {
       npos = it->first;
       nneg = it->second;
+      if(nneg == GND)
+        continue;
       h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_{}] - (*solVectorPtr)[li_{}];\n",etype,npos,nneg,npos,nneg);
       h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}].diff(cogendaProbeID_{}_{}_{},{});\n",etype,npos,nneg,etype,npos,nneg,n_probeVars);
     }
@@ -597,7 +603,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       ivec != _codeVec->end (); ++ivec)
   {
     strVec lines = str_split(*ivec, '\n', '\n');
-    int src_line_status = -1;
+    //int src_line_status = -1;
+    int src_line_status = 0; //seems this flag is useless
     bool isProcessed = false;
     for(unsigned int idx=0; idx < lines.size(); idx++)
     {
@@ -688,6 +695,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         std::cout << "WARN line not processed: " << line << std::endl;
     }
   }
+  h_outCxx << "}\n";
 }
 
 void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
@@ -698,7 +706,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
     h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
-    h_outCxx << str_format("    {} = model_.{}",it->first, it->first) <<std::endl;
+    h_outCxx << str_format("    {} = model_.{};",it->first, it->first) <<std::endl;
   }
   h_outCxx << "  updateTemperature(cogendaInstTemp);\n";
   h_outCxx << "  return true;\n";
@@ -835,7 +843,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   _idx=1;
   for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it, ++_idx)
   {
-    h_outCxx << str_format("    addBranchDataNode( symbol_table, li_branch_{}, getName(), \"BRANCH_D{}\");",*it,_idx) << std::endl;
+    h_outCxx << str_format("    addBranchDataNode( symbol_table, li_branch_i{}, getName(), \"BRANCH_D{}\");",*it,_idx) << std::endl;
   }
   h_outCxx << "  }\n";
   h_outCxx << "}\n";
@@ -855,7 +863,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "  {    \n";
   h_outCxx << "        int i = 0;\n";
   for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
-    h_outCxx << str_format("        li_branch_{} = branchLIDVecRef[i++];\n", *it);
+    h_outCxx << str_format("        li_branch_i{} = branchLIDVecRef[i++];\n", *it);
   h_outCxx << "  }\n";
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
@@ -887,6 +895,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     string_t _strtmp = instanceInfoCxx.m_variables.at(it);
     strVec node_names = str_split(_strtmp, '_','_');
+    if(node_names[3] == GND)
+      continue;
     h_outCxx << str_format("  {} = dFdxMatPtr->returnRawEntryPointer(li_{},li_{});",_strtmp,
         node_names[1], node_names[3])<<std::endl;
   }
@@ -974,25 +984,27 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
   h_outCxx << "{\n";
   h_outCxx << "  cogendaTemperature = temperatureTemp;\n";
-  h_outCxx << "  cogenda_vt_nom = cogenda_vt(temperatureTemp);\n"; //TODO??
+  h_outCxx << "  cogenda_vt_nom = _VT_(temperatureTemp);\n"; //TODO??
   h_outCxx << "  return true;\n";
   h_outCxx << "}\n";  
   INSERT_EMPTY_LINE(h_outCxx);
-
-  h_outCxx << "  //int Instance::getNumNoiseSources\n";
-  h_outCxx << "int Instance::getNumNoiseSources () const\n";
-  h_outCxx << "{ return 0; } //Not implement Noise model \n";
-  INSERT_EMPTY_LINE(h_outCxx);
-  
-  h_outCxx << "  //void Instance::setupNoiseSources\n";
-  h_outCxx << "void Instance::setupNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
-  h_outCxx << "{ }//Not implement Noise model \n";
-  INSERT_EMPTY_LINE(h_outCxx);
-  
-  h_outCxx << "  //void Instance::getNoiseSources\n";
-  h_outCxx << "void Instance::getNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
-  h_outCxx << "{ }//Not implement Noise model \n";
-  INSERT_EMPTY_LINE(h_outCxx);
+  if(IGNORE_NOISE != 1)
+  {
+    h_outCxx << "  //int Instance::getNumNoiseSources\n";
+    h_outCxx << "int Instance::getNumNoiseSources () const\n";
+    h_outCxx << "{ return 0; } //Not implement Noise model \n";
+    INSERT_EMPTY_LINE(h_outCxx);
+    
+    h_outCxx << "  //void Instance::setupNoiseSources\n";
+    h_outCxx << "void Instance::setupNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
+    h_outCxx << "{ }//Not implement Noise model \n";
+    INSERT_EMPTY_LINE(h_outCxx);
+    
+    h_outCxx << "  //void Instance::getNoiseSources\n";
+    h_outCxx << "void Instance::getNoiseSources (Xyce::Analysis::NoiseData & noiseData)\n";
+    h_outCxx << "{ }//Not implement Noise model \n";
+    INSERT_EMPTY_LINE(h_outCxx);
+  }
   h_outCxx << "  //bool Instance::loadDAEdFdx //Load the dFdx static jacobian matrix\n";
   h_outCxx << "bool Instance::loadDAEdFdx()\n";
   h_outCxx << "{\n";
@@ -1036,7 +1048,7 @@ genModelProcessParams(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
     h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
-    h_outCxx << str_format("    {} = {}",it->first, it->second.init_value) <<std::endl;
+    h_outCxx << str_format("    {} = {};",it->first, it->second.init_value) <<std::endl;
     if(it->second.has_range)
     {
       string_t lower_Op = it->second.lower_Op == vpiGeOp ? ">=" : ">";
@@ -1203,7 +1215,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   //set all normal VA parameters as instance paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Instance:{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Instance::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
   
@@ -1218,7 +1230,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   //set all normal VA parameters as model paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Model:{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Model::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
   
