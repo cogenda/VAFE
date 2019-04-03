@@ -118,9 +118,9 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   }
   //xyceDeclareBranchLIDVariables
   h_outheader << "    //Branch LID Variables\n";
-  for(auto it=vaModuleEntries.m_branches.begin(); it != vaModuleEntries.m_branches.end(); ++it)
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
   {
-    string_t _varName = str_format("li_BRA_{}_{}", it->second[0], it->second[1]);
+    string_t _varName = str_format("li_BRA_{}_{}", it->first, it->second);
     h_outheader << str_format("    int {};", _varName) <<std::endl;
     instanceInfoCxx.m_variables.push_back(_varName);
   }
@@ -130,6 +130,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   {
     h_outheader << str_format("    int li_branch_i{};", *it) <<std::endl;
     instanceInfoCxx.m_variables.push_back(str_format("li_branch_i{}", *it));
+    if (vaModuleEntries.m_modulePorts.size() == 2) //only take the 1st item when 2 port device
+      break;
   }
   instanceInfoCxx.numExtVars = vaModuleEntries.m_modulePorts.size();
   instanceInfoCxx.numIntVars = vaModuleEntries.m_moduleNets.size() - instanceInfoCxx.numExtVars; 
@@ -194,9 +196,9 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    static const int cogendaNodeID_GND = -1;" <<std::endl;
   //xyceDeclareBranchConstants
   h_outheader << "    //Branch Constants\n";
-  for(auto it=vaModuleEntries.m_branches.begin(); it != vaModuleEntries.m_branches.end(); ++it)
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
   {
-    h_outheader << str_format("    static const int cogendaBRA_ID_{}_{};", it->second[0], it->second[1]) <<std::endl;
+    h_outheader << str_format("    static const int cogendaBRA_ID_{}_{};", it->first, it->second) <<std::endl;
   }
 
   //xyceDeclareProbeConstants
@@ -395,7 +397,7 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   //main header content goes here
   h_outheader << "namespace Xyce {" << std::endl;
   h_outheader << "namespace Device {" << std::endl;
-  h_outheader << str_format("namespace COGENDA_{} {", moduleName) << std::endl;
+  h_outheader << str_format("namespace COGENDA{} {", moduleName) << std::endl;
   h_outheader << "// This typedef is for our automatic differentiation:" << std::endl;
   h_outheader << str_format("typedef Sacado::Fad::SFad<double,{}> {};", numberProbes, ADVAR_TYPE) << std::endl;
   h_outheader << std::endl;
@@ -424,7 +426,7 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   //name space ananlog function
   CgenHeaderAnalogBlock(vaModuleEntries,h_outheader);
   h_outheader << "void registerDevice();"<< std::endl;
-  h_outheader << str_format("} // namespace COGENDA_{}", moduleName) << std::endl;
+  h_outheader << str_format("} // namespace COGENDA{}", moduleName) << std::endl;
   h_outheader << "} // namespace Device"<< std::endl;
   h_outheader << "} // namespace Xyce"<< std::endl;
   h_outheader << str_format("#endif //Xyce_N_DEV_{}_h", moduleName) << std::endl;
@@ -488,7 +490,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             continue;
           else
             _stampGCNodesRec.push_back(_curNodesConcat);
-          assert(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col1,node_col2)));
+          assert(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col1,node_col2))); //no need it? FIXME
           if(type == "Gptr")
           {
             //(*f_bi_Equ_ti_Node_Ptr) +=  +staticContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
@@ -627,7 +629,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       string_t str_nspace = string_t(n_space, ' ');
       for(auto it=line_splits.begin(); it != line_splits.end(); ++it)
         *it = str_strip(*it, " ", 0);
-      if(str_startswith(line_splits[0], "Icontrib_") || str_startswith(line_splits[0], "Qcontrib_"))
+      if(str_startswith(line_splits[0], "Icontrib_") || str_startswith(line_splits[0], "Qcontrib_")
+          || str_startswith(line_splits[0], "Vcontrib_"))
       {
         //gen codes for I/Q contrib
         strVec _strVec = str_split(line_splits[0], '_', ' ');
@@ -653,12 +656,29 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         {
           h_outCxx << "//I-contrib..." << std::endl;
           h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
-          if(_strVec.size() >= 3)
+          if(_strVec.size() >= 3 && nodNeg != GND)
             h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
           isProcessed = true;
           continue;
         }
-        
+        // V(internal2,n) <+ ((L*ddt(InductorCurrent)))
+        //dynamicContributions[cogendaBRA_ID_internal2_n] += (L*(InductorCurrent));
+        //  // Additional term resulting from contributions into V(internal2,n)
+        //staticContributions[cogendaNodeID_internal2] += probeVars[cogendaProbeID_I_internal2_n];
+        //staticContributions[cogendaNodeID_n] -= probeVars[cogendaProbeID_I_internal2_n];
+        //  // Final term for branch equation cogendaBRA_ID_internal2_n 
+        //  staticContributions[cogendaBRA_ID_internal2_n] -= (*solVectorPtr)[li_internal2]-(*solVectorPtr)[li_n];        
+        else if(line_splits[0][0] == 'V')
+        {
+          h_outCxx << "//V-contrib..." << std::endl;
+          h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
+          h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodPos, nodPos,nodNeg);
+          if(_strVec.size() >= 3 && nodNeg != GND)
+            h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodNeg, nodPos,nodNeg);
+          h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}]-(*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos,nodNeg);
+          isProcessed = true;
+          continue;
+        }        
         //gen codes for Q contrib as below
         // I(bi,ci) <+ ((ddt((qb1+qbtra))))
         //dynamicContributions[cogendaNodeID_bi] += (((qb1+qbtra)));
@@ -667,7 +687,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         {
           h_outCxx << "//Q-contrib..." << std::endl;
           h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
-          if(_strVec.size() >= 3)
+          if(_strVec.size() >= 3 && nodNeg != GND)
             h_outCxx << str_format("{}dynamicContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
           isProcessed = true;
           continue;
@@ -1202,12 +1222,12 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   string_t moduleName = vaModuleEntries.m_moduleName;
   h_outCxx <<"/* class Traits member functions */\n";
   h_outCxx <<"  //void Traits::loadInstanceParameters() \n";
-  h_outCxx <<str_format("void Traits::loadInstanceParameters(ParametricData<COGENDA_{}::Instance> &p)",moduleName)<<std::endl;
+  h_outCxx <<str_format("void Traits::loadInstanceParameters(ParametricData<COGENDA{}::Instance> &p)",moduleName)<<std::endl;
   h_outCxx <<"{\n";
   h_outCxx <<"  // This kludge is to force us always to have an instance parameter\n";
   h_outCxx <<"  // that the device manager can set to the temperature, even if we have\n";
   h_outCxx <<"  // no \"TEMP\".\n";
-  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_INST_TEMP\", 0.0, &COGENDA_{}::Instance::cogendaInstTemp)",moduleName)<<std::endl;
+  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_INST_TEMP\", 0.0, &COGENDA{}::Instance::cogendaInstTemp)",moduleName)<<std::endl;
   h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
   h_outCxx <<"    .setUnit(U_DEGK)\n";
   h_outCxx <<"    .setCategory(CAT_TEMP)\n";
@@ -1215,14 +1235,14 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   //set all normal VA parameters as instance paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Instance::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Instance::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
   
   h_outCxx <<"  //void Traits::loadModelParameters()\n";
-  h_outCxx <<str_format("void Traits::loadModelParameters(ParametricData<COGENDA_{}::Model> &p)",moduleName)<<std::endl;
+  h_outCxx <<str_format("void Traits::loadModelParameters(ParametricData<COGENDA{}::Model> &p)",moduleName)<<std::endl;
   h_outCxx <<"{\n";
-  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_MOD_TEMP\", 0.0, &COGENDA_{}::Model::cogendaModTemp)",moduleName)<<std::endl;
+  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_MOD_TEMP\", 0.0, &COGENDA{}::Model::cogendaModTemp)",moduleName)<<std::endl;
   h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
   h_outCxx <<"    .setUnit(U_DEGK)\n";
   h_outCxx <<"    .setCategory(CAT_TEMP)\n";
@@ -1230,7 +1250,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   //set all normal VA parameters as model paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA_{}::Model::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Model::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
   
@@ -1263,7 +1283,7 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
   h_outCxx << "//The C++ Main part of Model Implementation Starts here" << std::endl;
   h_outCxx <<"namespace Xyce {" << std::endl;
   h_outCxx <<"namespace Device {" << std::endl;
-  h_outCxx << str_format("namespace COGENDA_{} {", moduleName) << std::endl;
+  h_outCxx << str_format("namespace COGENDA{} {", moduleName) << std::endl;
   h_outCxx <<"JacobianStamp Instance::jacStamp;" << std::endl;
   h_outCxx <<"IdVector Instance::nodeMap;" << std::endl;
   h_outCxx <<"PairMap Instance::pairToJacStampMap;" << std::endl;
@@ -1282,9 +1302,20 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
   genInstMemberFunc(vaModuleEntries, h_outCxx);
   genModelMemberFunc(vaModuleEntries, h_outCxx);
  
-  h_outCxx << str_format("} // namespace COGENDA_{}\n",moduleName);
+  h_outCxx << str_format("} // namespace COGENDA{}\n",moduleName);
   h_outCxx << "} // namespace Device\n";
   h_outCxx << "} // namespace Xyce\n";
+  INSERT_EMPTY_LINE(h_outCxx);
+  
+  //add Boostrap codes to auto register Device
+  h_outCxx<<"struct Bootstrap {\n";
+  h_outCxx<<" Bootstrap() {\n";
+  h_outCxx<<str_format("  Xyce::Device::COGENDA{}::registerDevice(); }",moduleName);
+  h_outCxx <<"}; \n";
+  h_outCxx <<str_format("Bootstrap COGENDA{}_bootstrap;\n",moduleName);
+  INSERT_EMPTY_LINE(h_outCxx);
+
   return Ret_NORMAL;
 }
+
 

@@ -678,7 +678,8 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
   string_t _strName = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
   if(_strName == "DDT")  //Only process ddt
-    retStr = "0.0";
+    //retStr = "0.0";
+    str_replace_key(retStr, "ddt", "");
   else
   {
     std::cout << "Error Analog Filter Function Call:`" << _strName << "' not supported yet!" <<std::endl;
@@ -966,36 +967,41 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
         nodes.push_back(_retStr);
     }
   }
-  string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
-  string_t _keytemp = "vpiAnalogSmallSignalFuncCall", _extrComment="";
-  if(str_replace_key(_strRhs, _keytemp, "0.0"))
-    _extrComment = "//smallSignalFuncCall ignored here.";
-  retStr = str_format("{}+={}; {}",_strLhs,_strRhs,_extrComment);
-  retStr.insert(0, g_indent_width, ' ');
-  _contrib.etype = _etype;
-  _contrib.lineNo = lineNo;
-  _contrib.contrib_lhs=_strLhs;
-  _contrib.contrib_rhs=_strRhs;
-  _contrib.nodes = nodes;
-  if(vaSpecialItems.objPended)
-    vaSpecialItems.current_scope = VA_ContribSkipFilterFunc;
-  insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
-  _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
-  vaSpecialItems.m_contribs.push_back(_contrib); 
-  if(vaSpecialItems.objPended)
-    vaSpecialItems.current_scope = VA_ContribWithFilterFunc;
-  //check if there is ddt/ddx
-  if(vaSpecialItems.current_scope == VA_ContribWithFilterFunc)
+  if(!vaSpecialItems.objPended)
   {
-    assert(vaSpecialItems.objPended);
+    string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
+    string_t _keytemp = "vpiAnalogSmallSignalFuncCall", _extrComment="";
+    if(str_replace_key(_strRhs, _keytemp, "0.0"))
+      _extrComment = "//smallSignalFuncCall ignored here.";
+    retStr = str_format("{}+={}; {}",_strLhs,_strRhs,_extrComment);
+    retStr.insert(0, g_indent_width, ' ');
+    _contrib.etype = _etype;
+    _contrib.lineNo = lineNo;
+    _contrib.contrib_lhs=_strLhs;
+    _contrib.contrib_rhs=_strRhs;
+    _contrib.nodes = nodes;
+    insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
+    _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
+    vaSpecialItems.m_contribs.push_back(_contrib); 
+  }
+  else // vaSpecialItems.objPended
+  {
+    //vaSpecialItems.current_scope = VA_ContribSkipFilterFunc;
+  //if(vaSpecialItems.objPended)
+  //  vaSpecialItems.current_scope = VA_ContribWithFilterFunc;
+  //check if there is ddt/ddx
+    assert(vaSpecialItems.current_scope == VA_ContribWithFilterFunc && vaSpecialItems.objPended);
+  //{
+    //assert(vaSpecialItems.objPended);
     vpiHandle iterator = vpi_iterate (vpiArgument, vaSpecialItems.objPended);
     vpiHandle scan_handle;
     int idx=0, size = vpi_get (vpiSize, iterator);
     int cnt = 1;
     strVec _args;
-    _strType = (char *) vpi_get_str (vpiName, vaSpecialItems.objPended);
-    std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
-    assert(_strType == "DDT");
+    string_t _strLhs;
+    string_t _strType2 = (char *) vpi_get_str (vpiName, vaSpecialItems.objPended);
+    std::transform(_strType2.begin(), _strType2.end(), _strType2.begin(), toupper);
+    assert(_strType2 == "DDT");
     for(idx=0; idx < size; idx++)
     {
       if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
@@ -1004,12 +1010,31 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
         _args.push_back(_retStr);
       }
     }
-    _strLhs = "Qcontrib_" + concat_vector2string(nodes, "_");
-    _strRhs  = concat_vector2string(_args, "_");
-    _retStr = _strLhs + "=" + _strRhs + ";";
+    if(_strType == "V")
+    {
+      _strLhs = _strType + "contrib_";
+      _contrib.etype = _etype;
+      //record the branch LIDs
+      if(nodes.size() == 2)
+        vaSpecialItems.m_branchLIDs.push_back({nodes[0],nodes[1]});
+      else if(nodes.size() == 1)
+        vaSpecialItems.m_branchLIDs.push_back({nodes[0],GND});
+      else
+        assert(0);      
+    }
+    else
+    {
+      _strLhs = "Qcontrib_";
+      _contrib.etype = VA_Charge;
+    }
+    _strLhs += concat_vector2string(nodes, "_");
+    //_strRhs = concat_vector2string(_args, "_");
+    _retStr = _strLhs + "=" + _strRhs + ";"; //TODO why not += ?
     _retStr.insert(0, g_indent_width, ' ');
-    retStr  += "\n" + _retStr;
-    _contrib.etype = VA_Charge;
+    //retStr  += "\n" + _retStr;
+    retStr  += _retStr;
+    
+    //_contrib.etype = VA_Charge;
     _contrib.contrib_lhs=_strLhs;
     _contrib.contrib_rhs=_strRhs;
     _contrib.nodes = nodes;
@@ -1382,5 +1407,6 @@ CxxGenFiles (vpiHandle root)
   if(retH > 1 || retC > 1)
     std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
+
 
 

@@ -201,6 +201,7 @@ typedef struct _vaElement {
   sstrVecDict m_moduleVars;
   paramDict m_params;
   sstrVecDict m_branches;
+  strPairVec m_branchLIDs;   //for v(a,b) <+ ...
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
   strVec m_resolvedAnaFunCcodes;    
@@ -451,3 +452,4 @@ void CxxGenFiles (vpiHandle root);
 #endif
 
 #endif
+
