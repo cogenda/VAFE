@@ -11,15 +11,15 @@ CXXFLAGS := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c
 LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
-EXE:=vams.exe
+EXE:=xyce_vams
 VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va contrib.va macro.va vco.va branches.va
 DEBUG ?= 1
 ifeq ($(DEBUG),1)
     CFLAGS += -DDEBUG -ggdb
-    CXXFLAGS += -DDEBUG -ggdb
+    CXXFLAGS += -DDEBUG -ggdb -D__USE_XOPEN2K8 #add '__USE_XOPEN2K8' with gcc 4.7 pass
 else
     CFLAGS += -DNDEBUG -O3
-    CXXFLAGS += -DNDEBUG -O3
+    CXXFLAGS += -DNDEBUG -O3 -D__USE_XOPEN2K8
 endif    
 
 all : $(EXE)
@@ -116,4 +116,5 @@ clean :
 	-@rm -f parsetree
 
 -include $(wildcard *.d) dummy
+
 

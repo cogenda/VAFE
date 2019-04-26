@@ -4,8 +4,87 @@
  */
 #include "xyce_vacomp.h"
 #include "xyce_cxxgen.h"
-
+const bool __DEBUG__ = false;
 static instanceInfo instanceInfoCxx;
+
+//If each item is a pair starting with given key and append '_ID'
+//else add 'NodeID_' in the header
+strPair tidy_one_pair(strPair sPair, string_t key, string_t mode="")
+{
+  strPair tPair = sPair;
+  if(mode == "add_prefix") {
+    if(str_startswith(tPair.first, key)) 
+      tPair.first.replace(0,key.size(),key+"_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+    else
+      tPair.first = "NodeID_" + tPair.first;
+    if(str_startswith(tPair.second, key)) 
+      tPair.second.replace(0,key.size(),key+"_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+    else
+      tPair.second= "NodeID_" + tPair.second;
+  } 
+  else {
+    ;
+  }
+  return tPair;
+}
+//let A=the item before 'Equ' and B=items between one after 'Equ' and the last 3 one 
+//ad linked them with '_'
+//mode == 'add_prefix' to add NodeID or BRA_ID as prefix for each item in a pair
+strPair tidy_A_B_key(strVec &node_names, string_t mode="")
+{
+  strPair name_pair;
+  strVec::iterator iterDiv=std::find(node_names.begin(), node_names.end(), "Equ");
+  strVec::iterator iterL=std::find(node_names.begin(), iterDiv, "BRA");
+  strVec::iterator iterR=std::find(iterDiv, node_names.end(), "BRA");
+  if( iterL != iterDiv || iterR != node_names.end()) {
+    if (iterL != iterDiv && iterR != node_names.end()) { //two 'BRA' in node_names
+      int idxs[2] = {int(iterL - node_names.begin()), int(iterR - node_names.begin())};
+      for(int i=0; i<2; i++) {
+        strVec subvec=get_subvector(node_names, idxs[i], 3);
+        if(i==0)
+          name_pair.first  = concat_vector2string(subvec, "_");     
+        else
+          name_pair.second = concat_vector2string(subvec, "_");         
+      }
+      if(mode == "add_prefix") {
+        name_pair.first.replace(0,3,"BRA_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+        name_pair.second.replace(0,3,"BRA_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+      }
+    }
+    else if(iterL != iterDiv) {
+      // only fisrt 'BRA' in node_names
+      int idx = iterL - node_names.begin();
+      strVec subvec=get_subvector(node_names, idx, 3);
+      name_pair.first = concat_vector2string(subvec, "_");
+      name_pair.second=*(iterDiv + 1);
+      if(mode == "add_prefix") {
+        name_pair.first.replace(0,3,"BRA_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+        name_pair.second= "NodeID_" + name_pair.second;
+      }
+    } 
+    else if(iterR != node_names.end()){ 
+      // only last 'BRA' in node_names
+      int idx = iterR - node_names.begin();
+      strVec subvec=get_subvector(node_names, idx, 3);
+      name_pair.first = *(iterDiv - 1);
+      name_pair.second= concat_vector2string(subvec, "_");
+      if(mode == "add_prefix") {
+        name_pair.first = "NodeID_" + name_pair.first;
+        name_pair.second.replace(0,3,"BRA_ID");  //change 'BRA_***' -> 'BRA_ID_***'
+      }
+    }
+  }
+  else
+  {
+    name_pair.first = *(iterDiv - 1);
+    name_pair.second= *(iterDiv + 1);
+    if(mode == "add_prefix") {
+      name_pair.first = "NodeID_" + name_pair.first;
+      name_pair.second= "NodeID_" + name_pair.second;
+    }
+  }
+  return name_pair;
+}
 void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
 {
   h_outheader << "//-------------------------------------------------------------------------" <<std::endl;
@@ -143,28 +222,131 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
     it != vaModuleEntries.m_contribs.end(); ++it)
   {
     strPair nodePair;
-    for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
+    strPair nodePairLhs;
+    if(it->etype != VA_Potential) {
+      for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
+        for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
+        {
+          for(int idx=0; idx<2; idx++)
+          {
+            if(!idx)
+              nodePair = {*node_row, node_col->first};
+            else
+              nodePair = {*node_row, node_col->second};
+            if(nodePair.second == GND)
+              continue;
+            if(item_exists(_recodNodeMtrix, nodePair))
+              continue;
+            else
+              _recodNodeMtrix.push_back(nodePair);
+            //Jacobian  pointers:  double * f|q_bi_Equ_ti_Node_Ptr;
+            fNodePtrs.push_back(str_format("f_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
+            qNodePtrs.push_back(str_format("q_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
+            //Jacobian offsets:    int m_bi_Equ_ti_NodeOffset;
+            mNodeOffsets.push_back(str_format("m_{}_Equ_{}_NodeOffset", nodePair.first, nodePair.second));
+          }
+        }
+    } else {
+    // consider the BRA items with VA_Potential contrib
+    //if(it->etype == VA_Potential) {
+      if(it->nodes.size() > 1)
+        nodePairLhs = {it->nodes.at(0),it->nodes.at(1)};
+      else
+        nodePairLhs = {it->nodes.at(0),GND};
+      //insert v(a,b) node pair (a,b) into the dependent node list for BRA itmes generation
+      if(!item_exists(it->depend_nodes, nodePairLhs))  //TODO: will cause side effect
+      {
+        it->depend_nodes.push_back(nodePairLhs);
+        it->isInsertedLhsNodes = true;
+      }
+      for(int i=0; i<2; i++) {
+        if( i== 0 )
+          nodePair = {it->nodes.at(i), str_format("BRA_{}_{}",nodePairLhs.first,nodePairLhs.second)};
+        else if(nodePairLhs.second != GND)
+          nodePair = {it->nodes.at(i), str_format("BRA_{}_{}",nodePairLhs.first,nodePairLhs.second)};
+        if(item_exists(_recodNodeMtrix, nodePair))
+          continue;
+        else
+          _recodNodeMtrix.push_back(nodePair);
+        
+        //double * f_emitter_Equ_BRA_dvdgdt_emitter_Var_Ptr;
+        fNodePtrs.push_back(str_format(   "f_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+        qNodePtrs.push_back(str_format(   "q_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+        mNodeOffsets.push_back(str_format("m_{}_Equ_{}_VarOffset", nodePair.first, nodePair.second));
+      }
       for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
       {
         for(int idx=0; idx<2; idx++)
         {
           if(!idx)
-            nodePair = {*node_row, node_col->first};
+            nodePair = {str_format("BRA_{}_{}",nodePairLhs.first,nodePairLhs.second), node_col->first};
           else
-            nodePair = {*node_row, node_col->second};
+            nodePair = {str_format("BRA_{}_{}",nodePairLhs.first,nodePairLhs.second), node_col->second};
           if(nodePair.second == GND)
             continue;
           if(item_exists(_recodNodeMtrix, nodePair))
             continue;
           else
             _recodNodeMtrix.push_back(nodePair);
-          //Jacobian  pointers:  double * f|q_bi_Equ_ti_Node_Ptr;
-          fNodePtrs.push_back(str_format("f_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
-          qNodePtrs.push_back(str_format("q_{}_Equ_{}_Node_Ptr", nodePair.first, nodePair.second));
-          //Jacobian offsets:    int m_bi_Equ_ti_NodeOffset;
+          //f_BRA_gate_cathode_Equ_cathode_Node_Ptr;
+          fNodePtrs.push_back(str_format(   "f_{}_Equ_{}_Node_Ptr",   nodePair.first, nodePair.second));
+          qNodePtrs.push_back(str_format(   "q_{}_Equ_{}_Node_Ptr",   nodePair.first, nodePair.second));
           mNodeOffsets.push_back(str_format("m_{}_Equ_{}_NodeOffset", nodePair.first, nodePair.second));
         }
       }
+    }
+    if(it->depend_Branchnodes.size() >0)
+    {
+      //f_cathode_Equ_BRA_drain_cathode_Var_Ptr
+      for(auto node_col=it->depend_Branchnodes.begin(); node_col != it->depend_Branchnodes.end(); ++node_col)
+      {
+        for(int idx=0; idx<2; idx++)
+        {
+          if(!idx)
+            nodePair = {node_col->first,str_format("BRA_{}_{}", node_col->first,node_col->second)};
+          else
+            nodePair = {node_col->second,str_format("BRA_{}_{}", node_col->first,node_col->second)};
+          //if(nodePair.second == GND)
+          //  continue;
+          if(item_exists(_recodNodeMtrix, nodePair))
+            continue;
+          else
+            _recodNodeMtrix.push_back(nodePair);
+          //f_BRA_gate_cathode_Equ_cathode_Node_Ptr;
+          fNodePtrs.push_back(str_format(   "f_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+          qNodePtrs.push_back(str_format(   "q_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+          mNodeOffsets.push_back(str_format("m_{}_Equ_{}_VarOffset", nodePair.first, nodePair.second));
+          //only for branch lhs with branch contrib at rhs, TODO: check if the nominal nodes or depend nodes
+          if(it->etype == VA_Flow) {
+            fNodePtrs.push_back(str_format(   "f_{}_Equ_{}_Node_Ptr",   nodePair.second, nodePair.first));
+            qNodePtrs.push_back(str_format(   "q_{}_Equ_{}_Node_Ptr",   nodePair.second, nodePair.first));
+            mNodeOffsets.push_back(str_format("m_{}_Equ_{}_NodeOffset", nodePair.second, nodePair.first));
+          }
+        }
+      // consider two special BRA items
+      //f_BRA_nsat_mucinv_Equ_BRA_drain_cathode_Var_Ptr
+      strPair nodePairArr[2];
+      nodePairArr[0] = {str_format("BRA_{}_{}", nodePairLhs.first,nodePairLhs.second), str_format("BRA_{}_{}", node_col->first,node_col->second)};
+      //f_BRA_drain_cathode_Equ_BRA_drain_cathode_Var_Ptr
+      nodePairArr[1] = {str_format("BRA_{}_{}", node_col->first,node_col->second), str_format("BRA_{}_{}", node_col->first,node_col->second)};
+      for(int idx=0; idx<2; idx++)
+        {
+          nodePair = nodePairArr[idx];
+          if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
+            continue;
+          if(item_exists(_recodNodeMtrix, nodePair))
+            continue;
+          else
+            _recodNodeMtrix.push_back(nodePair);
+          //f_BRA_gate_cathode_Equ_cathode_Node_Ptr;
+          fNodePtrs.push_back(str_format(   "f_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+          qNodePtrs.push_back(str_format(   "q_{}_Equ_{}_Var_Ptr",   nodePair.first, nodePair.second));
+          mNodeOffsets.push_back(str_format("m_{}_Equ_{}_VarOffset", nodePair.first, nodePair.second));
+        }
+      }
+    }
+    //else if(it->etype == VA_Flow)
+    
   }
   instanceInfoCxx.fNodePtrIndex.first=instanceInfoCxx.m_variables.size();
   insert_vec2vec_unique(instanceInfoCxx.m_variables, fNodePtrs);
@@ -198,7 +380,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    //Branch Constants\n";
   for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
   {
-    h_outheader << str_format("    static const int cogendaBRA_ID_{}_{};", it->first, it->second) <<std::endl;
+    h_outheader << str_format("    static const int cogendaBRA_ID_{}_{} = {};", it->first, it->second, _idx) <<std::endl;
+    _idx += 1;
   }
 
   //xyceDeclareProbeConstants
@@ -465,6 +648,48 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
 }
 
+//function to format output G/C item
+//type: Gptr/Goffest,Cptr/Coffest
+//ptrKey: Node, Var
+//sign: +, -
+//rhsUnit={flag,val}: "no":"", "only"|"add"(added to G stamp):"+1" | "-1"
+//tagKey: NodeID | BRA_ID
+//other args are node names combination
+void output_oneNodePair_GC_stemp(std::ofstream& h_outCxx,string_t& type,const string_t& ptrKey,
+    string_t& nlhsA, string_t& nlhsB, string_t& sign,
+    string_t& nrhsA, string_t& nrhsB, flagDict& rhsUnit, const string_t tagKey="NodeID")
+{
+  string_t outString="";
+  string_t dxEtype="V";
+  if(ptrKey == "Var")
+    dxEtype = "I";
+  if(type == "Gptr") {
+    if(rhsUnit.flag == "no" || rhsUnit.flag == "add") {
+      outString=str_format("  (*f_{}_Equ_{}_{}_Ptr) +=  {}staticContributions[cogenda{}_{}].dx(cogendaProbeID_{}_{}){};",
+                             nlhsA, nlhsB,ptrKey,    sign,                          tagKey,nrhsA,             dxEtype,nrhsB,rhsUnit.val);
+    }
+    else if(rhsUnit.flag == "only")
+      outString=str_format("  (*f_{}_Equ_{}_{}_Ptr) +=  {};",
+                               nlhsA, nlhsB,ptrKey,rhsUnit.val);
+  }
+  else if(type == "Goffest") {
+    if(rhsUnit.flag == "no" || rhsUnit.flag == "add") {
+      outString=str_format("  dFdx[li_{}][m_{}_Equ_{}_{}Offset] +=  {}staticContributions[cogenda{}_{}].dx(cogendaProbeID_{}_{}){};",
+                                 nlhsA,nlhsA, nlhsB,ptrKey,       sign,                          tagKey,nrhsA,            dxEtype,nrhsB,rhsUnit.val);
+    }
+    else if(rhsUnit.flag == "only")
+      outString=str_format("  dFdx[li_{}][m_{}_Equ_{}_{}Offset] +=  {};",
+                                   nlhsA,nlhsA, nlhsB,ptrKey,rhsUnit.val);
+  }
+  else if(type == "Cptr")
+    outString=str_format("  (*q_{}_Equ_{}_{}_Ptr) +=  {}dynamicContributions[cogenda{}_{}].dx(cogendaProbeID_{}_{});",
+                             nlhsA,nlhsB,ptrKey,    sign,                       tagKey,nrhsA,             dxEtype,nrhsB);
+  else if(type == "Coffest")
+    outString=str_format("  dQdx[li_{}][m_{}_Equ_{}_{}Offset] +=  {}dynamicContributions[cogenda{}_{}].dx(cogendaProbeID_{}_{});",
+                                 nlhsA,nlhsA, nlhsB,ptrKey,       sign,                        tagKey,nrhsA,             dxEtype,nrhsB);
+  h_outCxx << outString << std::endl;
+}
+
 //generate C-codes for G/C stamping elements, 
 //type=Gptr    G element with pointer
 //type=Goffest G element with matrix
@@ -472,52 +697,260 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
 //type=Coffest C element with matrix
 void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string_t type)
 {
-    //note: loop for all Flow's contribs and depend notes to combinate the Jacob element
-    strVec _stampGCNodesRec;
-    string_t _curNodesConcat;
-    for(auto it=vaModuleEntries.m_contribs.begin(); 
-      it != vaModuleEntries.m_contribs.end(); ++it)
-    {
+  //note: loop for all Flow's contribs and depend notes to combinate the Jacob element
+  strVec _stampGCNodesRec;
+  string_t _curNodesConcat;
+  strPair nodePair;
+  strPair nodePairLhs;
+  strVec signs = {"+","-"};
+  strVec unitStamps = {"-1","+1"};
+  flagDict rhsUnit={"no",""};
+  string_t ptrKey, nlhsA, nlhsB, sign, nrhsA, nrhsB;
+  bool hasDependNodes = true;
+  for(auto it=vaModuleEntries.m_contribs.begin(); 
+    it != vaModuleEntries.m_contribs.end(); ++it)
+  {
+    if(it->nodes.size() > 1)
+      nodePairLhs = {it->nodes.at(0),it->nodes.at(1)};
+    else
+      nodePairLhs = {it->nodes.at(0),GND};   
+    if(it->etype != VA_Potential) {
+      //loop for each two nodes in lhs
       for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
       {
         for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
         {
-          string_t node_col1 = node_col->first, node_col2 = node_col->second;
-          _curNodesConcat =  *node_row + node_col1 + node_col2;
-          if(node_col1 == GND || node_col2 == GND)
+          nlhsA = *node_row;
+          nrhsA = nlhsA;
+          strVec node_depends = {node_col->first, node_col->second};
+          nrhsB = concat_vector2string(node_depends,"_");
+          for(int idx=0; idx<2; idx++) { //loop for each node in depend node pair
+            nlhsB = node_depends[idx];
+            sign  = signs[idx];
+            _curNodesConcat = nlhsA + "_" + nlhsB;
+            if(nlhsB == GND)
+              continue;
+            if(item_exists(_stampGCNodesRec, _curNodesConcat))
+              continue;
+            else
+              _stampGCNodesRec.push_back(_curNodesConcat);
+            if(__DEBUG__) {
+              if(!item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col->first,node_col->second)) || 
+                 !item_exists(instanceInfoCxx.stampNodeMtrix,strPair(node_col->first,node_col->second))) //no need it? FIXME
+              {
+                std::cout << str_format("**dbg: V_{}_{} Not found ^^^ \n", node_col->first,node_col->second);
+                //continue;
+              }
+            }
+            if(  ((type == "Gptr" || type == "Goffest") && it->rhs_etype == VA_Static && it->etype == VA_Flow)
+              || ((type == "Cptr" || type == "Coffest") && it->etype == VA_Charge))
+              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+          }
+        }
+      }
+      //processing BRA items generated by I(a,b)<+I(c,d)
+      if(it->depend_Branchnodes.size() >0) {
+        for(auto node_col=it->depend_Branchnodes.begin(); node_col != it->depend_Branchnodes.end(); ++node_col)
+        {
+          nrhsB = str_format("{}_{}", node_col->first,node_col->second);
+          nlhsB = "BRA_" + nrhsB;
+          strVec node_depends = {node_col->first, node_col->second};
+          sign = "+"; //always '+' for Var_Ptr rhs
+          for(int idx=0; idx<2; idx++)
+          {
+            nlhsA = node_depends[idx];
+            nrhsA = nlhsA;
+            _curNodesConcat = nlhsA + "_" + nlhsB;
+            if(item_exists(_stampGCNodesRec, _curNodesConcat))
+              continue;
+            else
+              _stampGCNodesRec.push_back(_curNodesConcat);
+            
+            assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+            rhsUnit.flag = "no"; rhsUnit.val = "";
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Var",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+            if(((type == "Cptr" || type == "Coffest") && it->etype == VA_Charge) || 
+              ((type == "Gptr" || type == "Goffest") && it->etype == VA_Flow))
+            {
+              //output_oneNodePair_GC_stemp(h_outCxx, nodePair, nodePairLhs, type);
+              rhsUnit.flag = "only";
+              rhsUnit.val = unitStamps[idx];
+              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsB, nlhsA, sign, nrhsA, nrhsB, rhsUnit); //swap A,B
+              rhsUnit.flag = "no"; rhsUnit.val = "";
+            }
+          }
+        if(__DEBUG__)
+          h_outCxx << "//*** dbg GC stamp-VA_Flow-2 ***\n";
+        // consider two special BRA items
+        //f_BRA_nsat_mucinv_Equ_BRA_drain_cathode_Var_Ptr
+        nrhsB = str_format("{}_{}", node_col->first,node_col->second);
+        nlhsB = "BRA_" + nrhsB;
+        string_t tagKey = "BRA_ID";
+        strVec nodePairVec_lhs = {
+          str_format("{}_{}", nodePairLhs.first,nodePairLhs.second),
+          str_format("{}_{}", node_col->first,node_col->second) };
+        sign = "+";
+        for(int idx=0; idx<2; idx++)
+          {
+            nrhsA = nodePairVec_lhs[idx];
+            nlhsA = "BRA_" + nrhsA;;
+            if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
+              continue;
+
+            _curNodesConcat = nlhsA + "_" + nlhsB;
+            if(item_exists(_stampGCNodesRec, _curNodesConcat))
+              continue;
+            else
+              _stampGCNodesRec.push_back(_curNodesConcat);
+            
+            if(!item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)))
+              std::cout << "Warn: " << nlhsA << "_" << nlhsB << " Not exists in stampNodeMtrix, exit!" <<std::endl;
+            assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+            rhsUnit.flag = "no"; rhsUnit.val = "";
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Var",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit,tagKey);
+            if(__DEBUG__)
+              h_outCxx << "//*** dbg GC stamp-VA_Flow-3 ***\n";
+          }
+        }
+      }
+    } else { //processing v(a,b) <+ ... BRA items
+      //1st part: f/q_n1/n2_Equ_BRA_n1_n2_Var_Ptr
+      rhsUnit.flag = "no"; rhsUnit.val = ""; sign = "+";
+      strVec nodePairVec_lhs = {nodePairLhs.first,nodePairLhs.second};
+      for(int i=0; i<2; i++) {
+        nrhsB = str_format("{}_{}", nodePairLhs.first,nodePairLhs.second);
+        nlhsB = "BRA_" + nrhsB;          
+        nlhsA = nodePairVec_lhs[i];
+        nrhsA = nlhsA;
+        if( i > 0 and nlhsA == GND)
+          continue;
+        _curNodesConcat = nlhsA + "_" + nlhsB;
+        if(item_exists(_stampGCNodesRec, _curNodesConcat))
+          continue;
+        else
+          _stampGCNodesRec.push_back(_curNodesConcat);
+        
+        if(!item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)))
+          std::cout << "Warn: " << nlhsA << "_" << nlhsB << " Not exists in stampNodeMtrix, exit!" <<std::endl;
+        assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+        output_oneNodePair_GC_stemp(h_outCxx,type,"Var",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+        if(__DEBUG__)
+          h_outCxx << "//*** dbg GC stamp-VA_Potential-1 ***\n";          
+      }
+      //2nd part: f/q_BRA_n1_n2_Equ_dependx_Node_Ptr
+      if(nodePairLhs == it->depend_nodes[0] && it->depend_nodes.size() == 1)
+        hasDependNodes = false;
+      nodePairVec_lhs={nodePairLhs.first,nodePairLhs.second};
+      nrhsA = concat_vector2string(nodePairVec_lhs, "_");
+      nlhsA = "BRA_"+nrhsA;
+      string_t tagKey = "BRA_ID";
+      for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
+      {
+        //hack it to ignore the last depend nodes 'cause they are forced to add into depend node list
+        if((*node_col) == it->depend_nodes.back() && it->isInsertedLhsNodes) 
+          continue;
+        strVec node_depends = {node_col->first, node_col->second};
+        nrhsB = concat_vector2string(node_depends, "_");
+        for(int idx=0; idx<2; idx++)
+        {
+          nlhsB = node_depends[idx]; 
+          sign = signs[idx];
+          if(nlhsB== GND)
             continue;
+          _curNodesConcat = nlhsA + "_" + nlhsB;
           if(item_exists(_stampGCNodesRec, _curNodesConcat))
             continue;
           else
             _stampGCNodesRec.push_back(_curNodesConcat);
-          assert(item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col1,node_col2))); //no need it? FIXME
-          if(type == "Gptr")
+          
+          if(!item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)))
+            std::cout << "Warn: " << nlhsA << "_" << nlhsB << " Not exists in stampNodeMtrix, exit!" <<std::endl;
+          assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+          
+          if(type == "Gptr" || type == "Goffest")
           {
-            //(*f_bi_Equ_ti_Node_Ptr) +=  +staticContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
-            h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
-            h_outCxx << str_format("  (*f_{}_Equ_{}_Node_Ptr) +=  -staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
+            if(it->rhs_etype == VA_Static && hasDependNodes) {
+              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit, tagKey);
+            }
           }
-          else if(type == "Goffest")
+          else if( (type == "Cptr" || type == "Coffest") && it->rhs_etype == VA_Dynamic)
           {
-            //dFdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +staticContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
-            h_outCxx << str_format("  dFdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  +staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
-            h_outCxx << str_format("  dFdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  -staticContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
-          }
-          else if(type == "Cptr")
-          {
-            //(*q_bi_Equ_ti_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
-            h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col1,*node_row,node_col1,node_col2) << std::endl;
-            h_outCxx << str_format("  (*q_{}_Equ_{}_Node_Ptr) +=  -dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,node_col2,*node_row,node_col1,node_col2) << std::endl;
-          }
-          else if(type == "Coffest")
-          {
-            //dQdx[li_bi][A_bi_Equ_ti_NodeOffset] +=  +dynamicContributions[cogendaNodeID_bi].dx(cogendaProbeID_V_ti_GND);
-            h_outCxx << str_format("  dQdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  +dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col1,*node_row,node_col1,node_col2)<< std::endl;
-            h_outCxx << str_format("  dQdx[li_{}][m_{}_Equ_{}_NodeOffset] +=  -dynamicContributions[cogendaNodeID_{}].dx(cogendaProbeID_V_{}_{});",*node_row,*node_row,node_col2,*node_row,node_col1,node_col2)<< std::endl;
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit, tagKey);
           }
         }
+      }      
+      //added additional 2 Branches of a,b for V(a,b)<+ ... (like VCVS,CCVS,CCCS elements)
+      if(type == "Gptr" || type == "Goffest")
+      {
+        rhsUnit.flag = "only"; rhsUnit.val = unitStamps[0];
+        nlhsB = nodePairVec_lhs[0];
+        output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+        nlhsB = nodePairVec_lhs[1]; rhsUnit.val = unitStamps[1];
+        if(nlhsB != GND)
+          output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+        rhsUnit.flag = "no"; rhsUnit.val = "";
       }
+      
+      //3rd part: f/q_BRA_n1_n2_Equ_BRA_nx_Node_Ptr and other items for rhs branch items
+      if(it->depend_Branchnodes.size() >0) {
+        string_t tagKey = "BRA_ID";
+        sign = "+";
+        rhsUnit.flag = "no"; rhsUnit.val = "";
+        for(auto node_col=it->depend_Branchnodes.begin(); node_col != it->depend_Branchnodes.end(); ++node_col)
+        {
+          strVec node_depends = {node_col->first, node_col->second};
+          nrhsB = concat_vector2string(node_depends, "_");
+          nlhsB = "BRA_"+nrhsB;
+          
+          for(int idx=0; idx<2; idx++)
+          {
+            nlhsA = node_depends[idx];
+            nrhsA = nlhsA;
+            if(nlhsA == GND)
+              continue;
+            _curNodesConcat = nlhsA + "_" + nlhsB;
+            if(item_exists(_stampGCNodesRec, _curNodesConcat))
+              continue;
+            else
+              _stampGCNodesRec.push_back(_curNodesConcat);
+          
+            if(!item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)))
+              std::cout << "Warn: " << nlhsA << "_" << nlhsB << " Not exists in stampNodeMtrix, exit!" <<std::endl;
+            assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Var",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit, tagKey);
+          }
+          // consider two special BRA items
+          //f_BRA_nsat_mucinv_Equ_BRA_drain_cathode_Var_Ptr
+          strVec nodePairVec_lhs = {
+          str_format("{}_{}", nodePairLhs.first,nodePairLhs.second),
+          str_format("{}_{}", node_col->first,node_col->second) };
+          nlhsB = "BRA_" + nodePairVec_lhs[1];
+          nrhsB = nodePairVec_lhs[1];
+          sign = "+";
+          for(int idx=0; idx<2; idx++)
+          {
+            nlhsA = "BRA_" + nodePairVec_lhs[idx];
+            nrhsA = nodePairVec_lhs[idx];
+            //nodePair = nodePairArr[idx];
+            if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
+              continue;
+            //output_oneNodePair_GC_stemp(h_outCxx, nodePair, nodePairLhs, type);
+            _curNodesConcat = nlhsA + "_" + nlhsB;
+            if(item_exists(_stampGCNodesRec, _curNodesConcat))
+              continue;
+            else
+              _stampGCNodesRec.push_back(_curNodesConcat);
+            
+            if(!item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)))
+              std::cout << "Warn: " << nlhsA << "_" << nlhsB << " Not exists in stampNodeMtrix, exit!" <<std::endl;
+            assert(item_exists(instanceInfoCxx.stampNodeMtrix, strPair(nlhsA,nlhsB)));
+            rhsUnit.flag = "no"; rhsUnit.val = "";
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Var",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit,tagKey);
+          }
+        }
+      }          
     }
+  }      
 }
 
 //generate C-codes for VA module codes, model="model" for class Model "instance" for class Instance
@@ -548,7 +981,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         h_outCxx << str_format("  {} {};", varType, varName) << std::endl;
     }
   }
-  int n_probeVars = vaModuleEntries.m_probeConstants.size();
+  int n_probeVars = vaModuleEntries.m_probeConstants["V"].size() + vaModuleEntries.m_probeConstants["I"].size();
   int n_probeNodes=vaModuleEntries.m_moduleNets.size();
   h_outCxx << "  // set the sizes of the Fad arrays:\n";
   h_outCxx << str_format("  if (probeVars.size() != ({}))\n",n_probeVars);
@@ -580,10 +1013,18 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
     {
       npos = it->first;
       nneg = it->second;
-      if(nneg == GND)
-        continue;
-      h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_{}] - (*solVectorPtr)[li_{}];\n",etype,npos,nneg,npos,nneg);
-      h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}].diff(cogendaProbeID_{}_{}_{},{});\n",etype,npos,nneg,etype,npos,nneg,n_probeVars);
+      //if(nneg == GND)
+      //  continue;
+      if(item_exists(vaModuleEntries.m_branchLIDs,strPair(npos,nneg)) && etype == "I" )
+        h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_BRA_{}_{}];\n",etype,npos,nneg,npos,nneg);
+      else
+      {
+        if(nneg != GND) 
+          h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_{}] - (*solVectorPtr)[li_{}];\n",etype,npos,nneg,npos,nneg);
+        else
+          h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}] = (*solVectorPtr)[li_{}];\n",etype,npos,nneg,npos,nneg);
+      }
+    h_outCxx << str_format("  probeVars[cogendaProbeID_{}_{}_{}].diff(cogendaProbeID_{}_{}_{},{});\n",etype,npos,nneg,etype,npos,nneg,n_probeVars);
     }
   }
   INSERT_EMPTY_LINE(h_outCxx);
@@ -594,9 +1035,14 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   for (strVec::iterator ivec = _codeVec->begin (); 
       ivec != _codeVec->end (); ++ivec)
   {
+    if(ivec == _codeVec->begin ())
+      h_outCxx << "if (getSolverState().dcopFlag) {";
     h_outCxx << *ivec;
-    if((*ivec)[(*ivec).size()-1] != '\n')
+    if((*ivec)[(*ivec).size()-1] != '\n') {
       h_outCxx << std::endl;
+    }
+    if(*ivec == _codeVec->back ())
+      h_outCxx << "}" <<std::endl;
   }
   INSERT_EMPTY_LINE(h_outCxx);
 
@@ -770,9 +1216,10 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "  PairVector jacobianElements;\n";
   {
     strPairVec &_nodeMtrix=instanceInfoCxx.stampNodeMtrix;
-    for(auto nodePair=_nodeMtrix.begin(); nodePair != _nodeMtrix.end(); ++nodePair)
+    for(strPairVec::iterator nodePair=_nodeMtrix.begin(); nodePair != _nodeMtrix.end(); ++nodePair)
     {
-      h_outCxx << str_format("  jacobianElements.push_back(IntPair(cogendaNodeID_{},cogendaNodeID_{}));",nodePair->first, nodePair->second)<<std::endl;
+      strPair id_pair=tidy_one_pair(*nodePair, "BRA", "add_prefix");
+      h_outCxx << str_format("  jacobianElements.push_back(IntPair(cogenda{},cogenda{}));",id_pair.first, id_pair.second)<<std::endl;
     }
   }
   INSERT_EMPTY_LINE(h_outCxx);
@@ -844,6 +1291,10 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     h_outCxx << str_format("  li_{} = localLIDVec[nodeMap[cogendaNodeID_{}]];", *it, *it) <<std::endl;
   }
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
+  {
+    h_outCxx << str_format("  li_BRA_{}_{} = localLIDVec[nodeMap[cogendaBRA_ID_{}_{}]];", it->first, it->second,it->first, it->second) <<std::endl;
+  }  
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
 
@@ -857,6 +1308,10 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
         continue;
     h_outCxx << str_format("  addInternalNode(symbol_table, li_{}, getName(), \"{}\");", *it, *it) <<std::endl;        
   }
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
+  {
+    h_outCxx << str_format("  addInternalNode(symbol_table, li_BRA_{}_{}, getName(), \"{}_{}_branch\");", it->first, it->second,it->first, it->second) <<std::endl; 
+  }
 
   h_outCxx << "  if (loadLeadCurrent)\n";
   h_outCxx << "  {\n";
@@ -864,6 +1319,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it, ++_idx)
   {
     h_outCxx << str_format("    addBranchDataNode( symbol_table, li_branch_i{}, getName(), \"BRANCH_D{}\");",*it,_idx) << std::endl;
+    if (vaModuleEntries.m_modulePorts.size() == 2) //only take the 1st item when 2 port device
+      break;
   }
   h_outCxx << "  }\n";
   h_outCxx << "}\n";
@@ -882,8 +1339,11 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "  if (loadLeadCurrent)\n";
   h_outCxx << "  {    \n";
   h_outCxx << "        int i = 0;\n";
-  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it) {
     h_outCxx << str_format("        li_branch_i{} = branchLIDVecRef[i++];\n", *it);
+    if(vaModuleEntries.m_modulePorts.size() == 2)
+      break;
+  }
   h_outCxx << "  }\n";
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
@@ -901,7 +1361,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     string_t _strtmp = instanceInfoCxx.m_variables.at(it);
     strVec node_names = str_split(_strtmp, '_','_');
-    h_outCxx << str_format("  jacLoc = pairToJacStampMap[IntPair(cogendaNodeID_{},cogendaNodeID_{})];",node_names[1],node_names[3])<<std::endl;
+    strPair id_pair = tidy_A_B_key(node_names, "add_prefix");
+    h_outCxx << str_format("  jacLoc = pairToJacStampMap[IntPair(cogenda{},cogenda{})];",id_pair.first,id_pair.second)<<std::endl;
     h_outCxx << str_format("  {} = jacLIDVec[jacLoc.first][jacLoc.second];",_strtmp)<<std::endl;
   }
   h_outCxx << "}\n";
@@ -915,17 +1376,19 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     string_t _strtmp = instanceInfoCxx.m_variables.at(it);
     strVec node_names = str_split(_strtmp, '_','_');
-    if(node_names[3] == GND)
-      continue;
+    strPair id_pair = tidy_A_B_key(node_names);
+    //if(node_names[3] == GND)
+    //  continue;
     h_outCxx << str_format("  {} = dFdxMatPtr->returnRawEntryPointer(li_{},li_{});",_strtmp,
-        node_names[1], node_names[3])<<std::endl;
+        id_pair.first, id_pair.second)<<std::endl;
   }
   for(int it=instanceInfoCxx.qNodePtrIndex.first; it <= instanceInfoCxx.qNodePtrIndex.second; ++it)
   {
     string_t _strtmp = instanceInfoCxx.m_variables.at(it);
     strVec node_names = str_split(_strtmp, '_','_');
+    strPair id_pair = tidy_A_B_key(node_names);
     h_outCxx << str_format("  {} = dQdxMatPtr->returnRawEntryPointer(li_{},li_{});",_strtmp,
-        node_names[1], node_names[3])<<std::endl;
+        id_pair.first, id_pair.second)<<std::endl;
   }
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
@@ -940,13 +1403,21 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     h_outCxx << str_format("  (*extData.daeFVectorPtr)[li_{}] += staticContributions[cogendaNodeID_{}].val();",
         *it, *it) << std::endl;
   }
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
+  {
+    h_outCxx << str_format("  (*extData.daeFVectorPtr)[li_BRA_{}_{}] += staticContributions[cogendaBRA_ID_{}_{}].val();", it->first, it->second,it->first, it->second) <<std::endl;
+  }  
   h_outCxx << "  if (loadLeadCurrent)\n";
   h_outCxx << "  {\n";
   h_outCxx << "    double * leadF = extData.nextLeadCurrFCompRawPtr;\n";
 
-  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it) 
+  {
     h_outCxx << str_format("          leadF[li_branch_i{}] = leadCurrentF[cogendaNodeID_{}];",
       *it, *it) << std::endl;
+    if (vaModuleEntries.m_modulePorts.size() == 2) //only take the 1st item when 2 port device
+      break;
+  }
 
     // here we have to do special things for BJTs, MOSFETs and 2-terminal
     // devices for power computation.
@@ -965,13 +1436,21 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     h_outCxx << str_format("  (*extData.daeQVectorPtr)[li_{}] += dynamicContributions[cogendaNodeID_{}].val();",
         *it, *it) << std::endl;
   }
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
+  {
+    h_outCxx << str_format("  (*extData.daeQVectorPtr)[li_BRA_{}_{}] += dynamicContributions[cogendaBRA_ID_{}_{}].val();", it->first, it->second,it->first, it->second) <<std::endl;
+  }  
   h_outCxx << "  if (loadLeadCurrent)\n";
   h_outCxx << "  {\n";
   h_outCxx << "    double * leadQ = extData.nextLeadCurrQCompRawPtr;\n";
 
   for(auto it=vaModuleEntries.m_modulePorts.begin(); it != vaModuleEntries.m_modulePorts.end(); ++it)
+  {
     h_outCxx << str_format("          leadQ[li_branch_i{}] = leadCurrentQ[cogendaNodeID_{}];",
       *it, *it) << std::endl;
+    if(vaModuleEntries.m_modulePorts.size() == 2)
+      break;
+  }
 
   h_outCxx << "  }\n";  
   h_outCxx << "  return true;\n";
@@ -1295,9 +1774,12 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
     h_outCxx << str_format("    const int Instance::cogendaNodeID_{};", *it) <<std::endl;
   }
   h_outCxx << "    const int Instance::cogendaNodeID_GND;" <<std::endl;  
-  INSERT_EMPTY_LINE(h_outCxx);
   // Additional IDs for branch equations
-  //TODO?
+  for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
+  {
+    h_outCxx << str_format("    const int Instance::cogendaBRA_ID_{}_{};", it->first, it->second) <<std::endl;
+  }
+  INSERT_EMPTY_LINE(h_outCxx);
   genDeviceTraits(vaModuleEntries, h_outCxx);
   genInstMemberFunc(vaModuleEntries, h_outCxx);
   genModelMemberFunc(vaModuleEntries, h_outCxx);

@@ -286,7 +286,7 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
       strPair &_nodePair = depItem.dependNodes.back();
       if(!depItem.dependNodes.size() || _nodePair.second != GND)
       {
-        depItem.dependNodes.push_back({tagName,GND});
+        depItem.dependNodes.push_back(strPair(tagName,GND));
       }
       else
       {
@@ -726,8 +726,19 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
       _retStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);     
-      if(_strType == "V" || _strType == "I")
+      if(_strType == "V")
         nodes.push_back(_retStr);
+      else if ( _strType == "I" )
+      {
+        //resolve the branch name to real nodes
+        if(key_exists(vaSpecialItems.m_branches, _retStr))
+        {
+          strVec _nodes = vaSpecialItems.m_branches[_retStr];
+          nodes.insert(nodes.end(), _nodes.begin(), _nodes.end());
+        }
+        else
+          nodes.push_back(_retStr);
+      }
       else 
       {
         //here is analog/system function call
@@ -745,7 +756,13 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
     assert(nodes.size() <= 2);
     if(nodes.size() < 2)
       nodes.push_back(GND);
-    vaSpecialItems.m_probeConstants[_strType].push_back({nodes[0],nodes[1]}); //TODO avoid the duplicated item
+    strPair _nodePair(nodes[0],nodes[1]);
+    if(!item_exists(vaSpecialItems.m_probeConstants[_strType],_nodePair))
+      vaSpecialItems.m_probeConstants[_strType].push_back(_nodePair); //TODO avoid the duplicated item
+    if( _strType == "I")
+    {
+      vaSpecialItems.m_nodeContainer.push_back(_nodePair);
+    }
   }
   else  //here is analog/system function call
   {
@@ -927,6 +944,8 @@ void
 resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   vpiHandle objRhs = vpi_handle(vpiRhs, obj);
+  //clean the node containor firstly
+  vaSpecialItems.m_nodeContainer.clear();
   string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
   vpiHandle objLhs = vpi_handle(vpiBranch, obj);
   int lineNo = (int) vpi_get (vpiLineNo, obj);
@@ -980,9 +999,35 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.contrib_lhs=_strLhs;
     _contrib.contrib_rhs=_strRhs;
     _contrib.nodes = nodes;
+    _contrib.rhs_etype = VA_Static;
     insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
+    if(vaSpecialItems.m_nodeContainer.size())
+    {
+      _contrib.depend_Branchnodes.insert(_contrib.depend_Branchnodes.end(), vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+      vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+    }
     vaSpecialItems.m_contribs.push_back(_contrib); 
+
+    if(_strType == "V")
+    {
+      //record the branch LIDs (BRA item)
+      if(nodes.size() == 2) {
+        strPair _nodePair(nodes[0],nodes[1]);
+        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
+          vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
+      }
+      else if(nodes.size() == 1) {
+        strPair _nodePair(nodes[0],GND);
+        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
+          vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
+      }
+      else
+        assert(0);      
+    }
+    
   }
   else // vaSpecialItems.objPended
   {
@@ -991,7 +1036,6 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   //  vaSpecialItems.current_scope = VA_ContribWithFilterFunc;
   //check if there is ddt/ddx
     assert(vaSpecialItems.current_scope == VA_ContribWithFilterFunc && vaSpecialItems.objPended);
-  //{
     //assert(vaSpecialItems.objPended);
     vpiHandle iterator = vpi_iterate (vpiArgument, vaSpecialItems.objPended);
     vpiHandle scan_handle;
@@ -1015,10 +1059,18 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
       _strLhs = _strType + "contrib_";
       _contrib.etype = _etype;
       //record the branch LIDs
-      if(nodes.size() == 2)
-        vaSpecialItems.m_branchLIDs.push_back({nodes[0],nodes[1]});
-      else if(nodes.size() == 1)
-        vaSpecialItems.m_branchLIDs.push_back({nodes[0],GND});
+      if(nodes.size() == 2) {
+        strPair _nodePair(nodes[0],nodes[1]);
+        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
+          vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
+      }
+      else if(nodes.size() == 1) {
+        strPair _nodePair(nodes[0],GND);
+        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
+          vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
+      }
       else
         assert(0);      
     }
@@ -1038,8 +1090,14 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.contrib_lhs=_strLhs;
     _contrib.contrib_rhs=_strRhs;
     _contrib.nodes = nodes;
+    _contrib.rhs_etype = VA_Dynamic;
     insert_depend_item(lineNo, _strLhs, vaSpecialItems.objPended, vaSpecialItems);
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
+    if(vaSpecialItems.m_nodeContainer.size())
+    {
+      _contrib.depend_Branchnodes.insert(_contrib.depend_Branchnodes.end(), vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+      vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+    }
     vaSpecialItems.m_contribs.push_back(_contrib);     
     //restore the state
     vaSpecialItems.objPended = 0;
@@ -1407,6 +1465,5 @@ CxxGenFiles (vpiHandle root)
   if(retH > 1 || retC > 1)
     std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
-
 
 

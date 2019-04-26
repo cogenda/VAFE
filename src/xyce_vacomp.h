@@ -41,8 +41,8 @@ typedef std::map < string_t, string_t > sstrDict;
 typedef std::map < string_t, struct _valueRange> paramDict;
 typedef std::map < string_t, strPairVec> sstrPairVecDict;
 
-const int N_VARS_PER_COL=12;
-const int INDENT_UNIT=2;
+const unsigned int N_VARS_PER_COL=12;
+const unsigned int INDENT_UNIT=2;
 const string_t g_loopIncVar="__loop_incr_var";
 
 extern std::map < int, string_t > va_c_type_map;
@@ -152,7 +152,9 @@ typedef enum _vaElectricalType {
   VA_Flow = 0,
   VA_Potential,
   VA_Charge,
-  VA_Capacitance
+  VA_Capacitance,
+  VA_Dynamic,
+  VA_Static,
 } vaElectricalType;
 
 typedef enum _vaState {
@@ -174,11 +176,17 @@ typedef enum _returnFlag {
 
 typedef struct _contribElement {
   vaElectricalType etype;
+  vaElectricalType rhs_etype;  //v(a,b)<+rhs, rhs's etype: ddt->dynamic else ->static
+  bool isInsertedLhsNodes;
   int lineNo;
   string_t contrib_lhs;
   string_t contrib_rhs;
   strVec nodes;         //a,c for I(a,c) <+ v(a,c)*2 + v(b,c)
+  //rhs dependent voltage node pair
   strPairVec depend_nodes;  //[{a,b},{b,c}] for above contrib
+  //rhs dependent branch node pair
+  strPairVec depend_Branchnodes;  //[{a,b},{b,c}] for contrib: i|v(a,c)<+rx*i(a,b)+ry*i(b,c)
+  //rhs dependent node pair for dynamic part
 }contribElement;
 
 typedef struct _dependTargInfo {
@@ -212,6 +220,8 @@ typedef struct _vaElement {
   std::vector < contribElement > m_contribs;
   std::map < string_t, dependVec > m_dependTargMap;
   sstrPairVecDict m_probeConstants;
+  //temp stored rhs branch nodes infor stored for BRA item resolution
+  strPairVec m_nodeContainer; 
   string_t m_moduleName;
   //current handling va code scope 
   vaState current_scope;  
@@ -267,6 +277,16 @@ void item_redundant_remove(std::vector<T>& vcontainer)
     return;
   std::set<T> s(vcontainer.cbegin(), vcontainer.cend());
   vcontainer = std::vector<T>(s.cbegin(), s.cend());  
+}
+
+//return the subvector = vector[istart:istart+len]
+template <typename T>
+std::vector<T> get_subvector(std::vector<T> &vec, int istart, int len)
+{
+  typename std::vector<T>::const_iterator first = vec.begin()+istart;
+  typename std::vector<T>::const_iterator last  = first + len;
+  typename std::vector<T> cut_vector(first, last);
+  return cut_vector;
 }
 
 //To check if a std::string `src stars with `targ

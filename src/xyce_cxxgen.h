@@ -41,4 +41,10 @@ typedef struct _instanceInfo {
   strVec m_probeConsts;   //probe node IDs
   strPairVec stampNodeMtrix; //node stamp matrix vector with node pair
 } instanceInfo;
+
+typedef struct _flagDict {
+  string_t flag;
+  string_t val;
+}flagDict;
 #endif
+
