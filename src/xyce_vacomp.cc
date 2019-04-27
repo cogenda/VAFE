@@ -261,7 +261,7 @@ getOrCreate_dependTarg_lineNo(int lineNo, string_t& varName, vaElement& vaSpecia
 //insert dependent nodes into container `depItem for a given target variable name
 void
 insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem, 
-    vaElement& vaSpecialItems) 
+    vaElement& vaSpecialItems, int etype=VA_Potential) 
 {
   string_t tagName = (string_t) vpi_get_str (vpiName, obj);
   if(key_exists(vaSpecialItems.m_params, tagName)) //ignore model parameter
@@ -274,6 +274,7 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
       {
         //Don't insert duplicated item!
         insert_vec2vec_unique(depItem.dependNodes, ivec->dependNodes);
+        insert_vec2vec_unique(depItem.depend_Branchnodes, ivec->depend_Branchnodes);
         break;
       }
     }
@@ -282,18 +283,22 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
   {
     //it's a valid node & not exists here, insert it
     //if(!item_exists(depItem.dependNodes, tagName))
+    //TODO: need to do that for depend_Branchnodes?
     {
-      strPair &_nodePair = depItem.dependNodes.back();
-      if(!depItem.dependNodes.size() || _nodePair.second != GND)
+      strPairVec *_thisNodes =  &(depItem.dependNodes);
+      if(etype == VA_Flow)
+        _thisNodes =  &(depItem.depend_Branchnodes);
+      strPair &_nodePair = _thisNodes->back();
+      if(!_thisNodes->size() || _nodePair.second != GND)
       {
-        depItem.dependNodes.push_back(strPair(tagName,GND));
+        _thisNodes->push_back(strPair(tagName,GND));
       }
       else
       {
         assert(_nodePair.second == GND);
         _nodePair.second = tagName;
         //check and remove the redundant item
-        item_redundant_remove(depItem.dependNodes);
+        item_redundant_remove(*_thisNodes);
       }
     }
   }
@@ -307,7 +312,7 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
 const intVec funcArgsObjTypes = {vpiArgument, vpiOperand};
 void
 insert_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
-    vaElement& vaSpecialItems)
+    vaElement& vaSpecialItems, int etype=VA_Potential)
 {
   for(auto itrType = funcArgsObjTypes.begin(); itrType != funcArgsObjTypes.end(); ++itrType)
   {
@@ -321,11 +326,11 @@ insert_depNodes_func_args(vpiHandle obj, int lineNo, dependTargInfo& depItem,
       {
         int _obj_type = (int) vpi_get (vpiType, scan_handle);
         if(_obj_type == xvpiReference)
-          insert_depNodes_one_targ(scan_handle, lineNo, depItem, vaSpecialItems);
+          insert_depNodes_one_targ(scan_handle, lineNo, depItem, vaSpecialItems, etype);
         else if(_obj_type == vpiConstant)
           continue;
         else
-          insert_depNodes_func_args (scan_handle, lineNo, depItem, vaSpecialItems);
+          insert_depNodes_func_args (scan_handle, lineNo, depItem, vaSpecialItems, etype);
       }
     }
   }
@@ -355,7 +360,19 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
       return;
     if(_obj_type != vpiAnalogFilterFuncCall || 
         vaSpecialItems.current_scope == VA_ContribWithFilterFunc)
-      insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems);
+    {
+      int _etype = VA_Potential;
+      if(_obj_type == vpiBranchProbeFuncCall)
+      {
+        string_t tagName = (string_t) vpi_get_str (vpiName, objValue);
+        std::transform(tagName.begin(), tagName.end(), tagName.begin(), toupper);
+        if(tagName[0] == 'V')
+          _etype = VA_Potential;
+        else if(tagName[0] == 'I')
+          _etype = VA_Flow;
+      }
+      insert_depNodes_func_args(objValue, lineNo, depItem, vaSpecialItems,_etype);
+    }
     return;
   }
   else if(_obj_type == xvpiReference)
@@ -678,8 +695,25 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
   string_t _strName = (char *) vpi_get_str (vpiName, obj);
   std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
   if(_strName == "DDT")  //Only process ddt
+  {
+    //strip 'ddt' and resolve its arguments
+    vpiHandle iterator = vpi_iterate (vpiArgument, obj);
+    vpiHandle scan_handle;
+    int idx=0, size = vpi_get (vpiSize, iterator);
+    int cnt = 1;
+    strVec _args;
+    for(idx=0; idx < size; idx++)
+    {
+      if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
+      {
+        string_t _retStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);     
+        _args.push_back(_retStr);
+      }
+    }
     //retStr = "0.0";
-    str_replace_key(retStr, "ddt", "");
+    //str_replace_key(retStr, "ddt", "");
+    retStr = str_format("({})",concat_vector2string(_args, ",")); 
+  }
   else
   {
     std::cout << "Error Analog Filter Function Call:`" << _strName << "' not supported yet!" <<std::endl;
@@ -1002,10 +1036,12 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.rhs_etype = VA_Static;
     insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
+    _contrib.depend_Branchnodes = vaSpecialItems.m_dependTargMap[_strLhs].back().depend_Branchnodes;
     if(vaSpecialItems.m_nodeContainer.size())
     {
       _contrib.depend_Branchnodes.insert(_contrib.depend_Branchnodes.end(), vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
-      vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+      insert_vec2vec_unique(vaSpecialItems.m_branchLIDs, vaSpecialItems.m_nodeContainer);
+      //vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
     }
     vaSpecialItems.m_contribs.push_back(_contrib); 
 
@@ -1014,13 +1050,15 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
       //record the branch LIDs (BRA item)
       if(nodes.size() == 2) {
         strPair _nodePair(nodes[0],nodes[1]);
-        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_branchLIDs,_nodePair))
+          vaSpecialItems.m_branchLIDs.push_back(_nodePair);
         if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
           vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
       }
       else if(nodes.size() == 1) {
         strPair _nodePair(nodes[0],GND);
-        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_branchLIDs,_nodePair))
+          vaSpecialItems.m_branchLIDs.push_back(_nodePair);
         if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
           vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
       }
@@ -1061,13 +1099,15 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
       //record the branch LIDs
       if(nodes.size() == 2) {
         strPair _nodePair(nodes[0],nodes[1]);
-        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_branchLIDs,_nodePair))
+          vaSpecialItems.m_branchLIDs.push_back(_nodePair);
         if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
           vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
       }
       else if(nodes.size() == 1) {
         strPair _nodePair(nodes[0],GND);
-        vaSpecialItems.m_branchLIDs.push_back(_nodePair);
+        if(!item_exists(vaSpecialItems.m_branchLIDs,_nodePair))
+          vaSpecialItems.m_branchLIDs.push_back(_nodePair);
         if(!item_exists(vaSpecialItems.m_probeConstants["I"],_nodePair))
           vaSpecialItems.m_probeConstants["I"].push_back(_nodePair); // avoid the duplicated item
       }
@@ -1093,10 +1133,12 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.rhs_etype = VA_Dynamic;
     insert_depend_item(lineNo, _strLhs, vaSpecialItems.objPended, vaSpecialItems);
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
+    _contrib.depend_Branchnodes = vaSpecialItems.m_dependTargMap[_strLhs].back().depend_Branchnodes;
     if(vaSpecialItems.m_nodeContainer.size())
     {
       _contrib.depend_Branchnodes.insert(_contrib.depend_Branchnodes.end(), vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
-      vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
+      insert_vec2vec_unique(vaSpecialItems.m_branchLIDs, vaSpecialItems.m_nodeContainer);
+      //vaSpecialItems.m_branchLIDs.insert(vaSpecialItems.m_branchLIDs.end(),vaSpecialItems.m_nodeContainer.begin(), vaSpecialItems.m_nodeContainer.end());
     }
     vaSpecialItems.m_contribs.push_back(_contrib);     
     //restore the state
@@ -1465,5 +1507,6 @@ CxxGenFiles (vpiHandle root)
   if(retH > 1 || retC > 1)
     std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
+
 
 

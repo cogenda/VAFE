@@ -149,6 +149,7 @@ const enum_description
 };
 
 typedef enum _vaElectricalType {
+  VA_UNKNOWN = -1,
   VA_Flow = 0,
   VA_Potential,
   VA_Charge,
@@ -193,6 +194,8 @@ typedef struct _dependTargInfo {
   int lineNo;
   //strVec dependNodes;
   strPairVec dependNodes;
+  //add it to save branch dependency like I(a,b)  for this lhs
+  strPairVec depend_Branchnodes;
 }dependTargInfo;
 
 typedef struct _valueRange {

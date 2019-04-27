@@ -213,7 +213,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
       break;
   }
   instanceInfoCxx.numExtVars = vaModuleEntries.m_modulePorts.size();
-  instanceInfoCxx.numIntVars = vaModuleEntries.m_moduleNets.size() - instanceInfoCxx.numExtVars; 
+  instanceInfoCxx.numIntVars = vaModuleEntries.m_moduleNets.size() + vaModuleEntries.m_branchLIDs.size() - instanceInfoCxx.numExtVars; 
   //xyceDeclareJacobianOffsets
   strVec fNodePtrs, qNodePtrs, mNodeOffsets;
   strPairVec &_recodNodeMtrix=instanceInfoCxx.stampNodeMtrix;
@@ -573,7 +573,7 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   }
     
   string_t moduleName = vaModuleEntries.m_moduleName;
-  int numberProbes = vaModuleEntries.m_moduleNets.size();
+  int numberProbes = vaModuleEntries.m_probeConstants["V"].size() + vaModuleEntries.m_probeConstants["I"].size();
   int numNodes = vaModuleEntries.m_modulePorts.size();
 
   CgenIncludeFiles(moduleName, h_outheader);
