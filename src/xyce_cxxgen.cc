@@ -214,6 +214,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   }
   instanceInfoCxx.numExtVars = vaModuleEntries.m_modulePorts.size();
   instanceInfoCxx.numIntVars = vaModuleEntries.m_moduleNets.size() + vaModuleEntries.m_branchLIDs.size() - instanceInfoCxx.numExtVars; 
+  instanceInfoCxx.numBRAs = vaModuleEntries.m_branchLIDs.size();
   //xyceDeclareJacobianOffsets
   strVec fNodePtrs, qNodePtrs, mNodeOffsets;
   strPairVec &_recodNodeMtrix=instanceInfoCxx.stampNodeMtrix;
@@ -987,8 +988,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   h_outCxx << str_format("  if (probeVars.size() != ({}))\n",n_probeVars);
   h_outCxx << "  {\n";
   h_outCxx << str_format("    probeVars.resize({});\n",n_probeVars);
-  h_outCxx << str_format("    staticContributions.resize({}+0);\n",n_probeNodes);
-  h_outCxx << str_format("    dynamicContributions.resize({}+0);\n",n_probeNodes);
+  h_outCxx << str_format("    staticContributions.resize({}+{});\n",n_probeNodes,instanceInfoCxx.numBRAs);
+  h_outCxx << str_format("    dynamicContributions.resize({}+{});\n",n_probeNodes,instanceInfoCxx.numBRAs);
   h_outCxx << "  }\n";
   INSERT_EMPTY_LINE(h_outCxx);
 
@@ -997,7 +998,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   //noiseContribsExponent.resize(11);
   
   // initialize contributions to zero (automatically sets derivatives to zero)
-  h_outCxx << str_format("  for (int i=0; i < {}+0 ; ++i)\n",n_probeNodes);
+  h_outCxx << str_format("  for (int i=0; i < {}+{} ; ++i)\n",n_probeNodes,instanceInfoCxx.numBRAs);
   h_outCxx << "  {\n";
   h_outCxx << "     staticContributions[i]=0;\n";
   h_outCxx << "     dynamicContributions[i]=0;\n";
@@ -1161,6 +1162,22 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         std::cout << "WARN line not processed: " << line << std::endl;
     }
   }
+  // should copy all the data from **Contributions to
+  // the lead current F vector to make sure all collapsed node
+  // contributions get summed into the external nodes.
+  h_outCxx << "  if (loadLeadCurrent) {\n";
+  h_outCxx << str_format("    for ( int unCtNode=0; unCtNode < {} ; unCtNode++) {\n",instanceInfoCxx.numExtVars);
+  h_outCxx << "      leadCurrentF[unCtNode] = 0.0;\n";
+  h_outCxx << "      leadCurrentQ[unCtNode] = 0.0;\n";
+  h_outCxx << "    }\n";
+  h_outCxx << str_format("    for ( int unCtNode=0; unCtNode < {}; unCtNode++) {\n",n_probeNodes);
+  h_outCxx << str_format("      if (nodeMap[unCtNode] < {} && nodeMap[unCtNode] != -1 ) {\n",instanceInfoCxx.numExtVars);
+  h_outCxx << "        leadCurrentF[nodeMap[unCtNode]] += staticContributions[unCtNode].val();\n";
+  h_outCxx << "        leadCurrentQ[nodeMap[unCtNode]] += dynamicContributions[unCtNode].val();\n";
+  h_outCxx << "      }\n";
+  h_outCxx << "    }\n";
+  h_outCxx << "  }\n";    
+  h_outCxx << "  return true;\n";
   h_outCxx << "}\n";
 }
 
@@ -1480,13 +1497,10 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
   
-  h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
-  h_outCxx << "{\n";
-  h_outCxx << "  cogendaTemperature = temperatureTemp;\n";
-  h_outCxx << "  cogenda_vt_nom = _VT_(temperatureTemp);\n"; //TODO??
-  h_outCxx << "  return true;\n";
-  h_outCxx << "}\n";  
+  h_outCxx << "  //bool Instance::updateIntermediateVars\n";
+  genModelEvalBody(vaModuleEntries, h_outCxx, "instance");
   INSERT_EMPTY_LINE(h_outCxx);
+
   if(IGNORE_NOISE != 1)
   {
     h_outCxx << "  //int Instance::getNumNoiseSources\n";
@@ -1533,10 +1547,15 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   genStampGCStuff(vaModuleEntries, h_outCxx, "Coffest"); 
   h_outCxx << "#endif\n";
   h_outCxx << "  return bsuccess;\n";
+  h_outCxx << "}\n"; 
+  INSERT_EMPTY_LINE(h_outCxx);
+
+  h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
+  h_outCxx << "{\n";
+  h_outCxx << "  cogendaTemperature = temperatureTemp;\n";
+  h_outCxx << "  cogenda_vt_nom = _VT_(temperatureTemp);\n"; //TODO??
+  h_outCxx << "  return true;\n";
   h_outCxx << "}\n";  
-  
-  h_outCxx << "  //bool Instance::updateIntermediateVars\n";
-  genModelEvalBody(vaModuleEntries, h_outCxx, "instance");
 }
 
 void 
@@ -1696,10 +1715,25 @@ genModelMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
 }
 
 void 
-genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
+genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx, bool putAtTail)
 {
   string_t moduleName = vaModuleEntries.m_moduleName;
   h_outCxx <<"/* class Traits member functions */\n";
+  if(putAtTail) {
+    h_outCxx <<"  //Device *Traits::factory()\n";
+    h_outCxx << "Device *Traits::factory(const Configuration &configuration, const FactoryBlock &factory_block)" <<std::endl;
+    h_outCxx << "  {" <<std::endl;
+    h_outCxx << "    return new DeviceMaster<Traits>(configuration, factory_block, factory_block.solverState_, factory_block.deviceOptions_);" <<std::endl;
+    h_outCxx << "}" <<std::endl;
+
+    h_outCxx << "void registerDevice()" <<std::endl;
+    h_outCxx << "{" <<std::endl;
+    h_outCxx << "  Config<Traits>::addConfiguration()" <<std::endl; 
+    h_outCxx << str_format("    .registerDevice(\"{}\", 1)", moduleName) <<std::endl; 
+    h_outCxx << str_format("    .registerModelType(\"{}\", 1);", moduleName) <<std::endl;
+    h_outCxx << "}" <<std::endl;
+    return;
+  }
   h_outCxx <<"  //void Traits::loadInstanceParameters() \n";
   h_outCxx <<str_format("void Traits::loadInstanceParameters(ParametricData<COGENDA{}::Instance> &p)",moduleName)<<std::endl;
   h_outCxx <<"{\n";
@@ -1732,19 +1766,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Model::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
-  
-  h_outCxx <<"  //Device *Traits::factory()\n";
-  h_outCxx << "Device *Traits::factory(const Configuration &configuration, const FactoryBlock &factory_block)" <<std::endl;
-  h_outCxx << "  {" <<std::endl;
-  h_outCxx << "    return new DeviceMaster<Traits>(configuration, factory_block, factory_block.solverState_, factory_block.deviceOptions_);" <<std::endl;
-  h_outCxx << "}" <<std::endl;
 
-  h_outCxx << "void registerDevice()" <<std::endl;
-  h_outCxx << "{" <<std::endl;
-  h_outCxx << "  Config<Traits>::addConfiguration()" <<std::endl; 
-  h_outCxx << str_format("    .registerDevice(\"{}\", 1)", moduleName) <<std::endl; 
-  h_outCxx << str_format("    .registerModelType(\"{}\", 1);", moduleName) <<std::endl;
-  h_outCxx << "}" <<std::endl;
 }
 
 returnFlag
@@ -1780,9 +1802,10 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
     h_outCxx << str_format("    const int Instance::cogendaBRA_ID_{}_{};", it->first, it->second) <<std::endl;
   }
   INSERT_EMPTY_LINE(h_outCxx);
-  genDeviceTraits(vaModuleEntries, h_outCxx);
+  genDeviceTraits(vaModuleEntries, h_outCxx, false);
   genInstMemberFunc(vaModuleEntries, h_outCxx);
   genModelMemberFunc(vaModuleEntries, h_outCxx);
+  genDeviceTraits(vaModuleEntries, h_outCxx, true);
  
   h_outCxx << str_format("} // namespace COGENDA{}\n",moduleName);
   h_outCxx << "} // namespace Device\n";

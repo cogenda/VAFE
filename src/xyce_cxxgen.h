@@ -34,6 +34,7 @@ const string_t str_format(const string_t& fmt_spec,
 typedef struct _instanceInfo {
   int numExtVars;       //external nodes number
   int numIntVars;       //internal nodes number
+  int numBRAs;          //BRA items, like li_BRA_**
   intPair fNodePtrIndex; //start and end index of fNodePtrs in m_variables
   intPair qNodePtrIndex;
   intPair mNodeOffsetIndex;
