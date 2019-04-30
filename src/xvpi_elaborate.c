@@ -1,6 +1,7 @@
 #include "xvpi.h"
 #include "xvpi_elaborate.h"
 #include "xyce_vacomp.h"
+extern int tree_print;
 
 static int clear_toplevel_module_property (PLI_BYTE8 *module_name)
 {
@@ -73,13 +74,12 @@ void cpp_generate_from_vpi(vpiHandle root)
 int xvpi_elaborate (void)
 {
 	int err;
-#if 1
         cpp_generate_from_vpi((vpiHandle)&(xvpi.root_object));
-#else
-        test_dump_vpi_obj(1000, (void *)(&(xvpi.root_object)));
-#endif
+        if(tree_print)
+          test_dump_vpi_obj(1000, (void *)(&(xvpi.root_object)));
 	if ((err = identify_and_tag_toplevel_modules()) != 0)
 		return err;
 	return 0;
 }
+
 

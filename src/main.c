@@ -10,13 +10,13 @@
 #include "xvpi.h"
 #include "xvpi_elaborate.h"
 int verbose=0;
+int tree_print = 0;
 
 int main (int argc, char **argv)
 {
 	const char *include_path_list [argc];
 	int include_path_count = 0;
 	int print_preprocessed_source_and_exit = 0;
-	int tree_print = 0;
 	int debug = 0;
 	int retval = EXIT_SUCCESS;
 	int ch;
@@ -25,7 +25,7 @@ int main (int argc, char **argv)
 	if (xvpi_init(argc, argv) == -1)
 		return -1;
 
-	while ((ch = getopt(argc, argv, "I:Etdhv?")) != -1) {
+	while ((ch = getopt(argc, argv, "I:EtdhvV")) != -1) {
 		switch (ch) {
 		case 'I':
 			include_path_list[include_path_count++] = optarg;
@@ -48,7 +48,7 @@ int main (int argc, char **argv)
 		case 'h':
 		case '?':
 		default:
-			vpi_printf("usage: %s <input file names>\n", argv[0]);
+			vpi_printf("usage: %s [-v|t|d|V|h] <input file names>\n", argv[0]);
 			return EXIT_FAILURE;
 		}
 	}
@@ -96,5 +96,6 @@ int main (int argc, char **argv)
 
 	return retval;
 }
+
 
 

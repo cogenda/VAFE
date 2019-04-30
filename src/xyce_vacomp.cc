@@ -1445,7 +1445,9 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
 {
   // process src lines
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
-  std::cout << "=====Final C codes=====" << std::endl;
+  if (!verbose)
+    return;
+  std::cout << "Info: Final C codes begin..........." << std::endl;
   for(unsigned int idx=0; idx<2; idx++)
   {
     strVec *_codeVec;
@@ -1469,12 +1471,12 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
 	{
           string_t key = it->second.init_value;
 	  mpars[it->first] = mpars[key];
-	  std::cout << "key: " << it-> first << " value : " << it->second.init_value
+	  std::cout << "parameter: " << it-> first << " value : " << it->second.init_value
             << " (resolved from " << key << ")" << std::endl;
 	}
       else
       {
-        std::cout << "key: " << it->first << " value: " << it->second.init_value;
+        std::cout << "parameter: " << it->first << " value: " << it->second.init_value;
         if(it->second.has_range)
         {
           string_t lower_Op = it->second.lower_Op == vpiGeOp ? "[" : "(";
@@ -1487,6 +1489,7 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
     }
   if(vaSpecialEntries.retFlag > 1)
     std::cout << "Info: VA compiling failed!" << std::endl;
+  std::cout << "Info: Final C codes end............." << std::endl;
   return;
 }
 
