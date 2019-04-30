@@ -728,7 +728,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           for(int idx=0; idx<2; idx++) { //loop for each node in depend node pair
             nlhsB = node_depends[idx];
             sign  = signs[idx];
-            _curNodesConcat = nlhsA + "_" + nlhsB;
+            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
             if(nlhsB == GND)
               continue;
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
@@ -761,7 +761,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           {
             nlhsA = node_depends[idx];
             nrhsA = nlhsA;
-            _curNodesConcat = nlhsA + "_" + nlhsB;
+            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -798,7 +798,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
               continue;
 
-            _curNodesConcat = nlhsA + "_" + nlhsB;
+            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -825,7 +825,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
         nrhsA = nlhsA;
         if( i > 0 and nlhsA == GND)
           continue;
-        _curNodesConcat = nlhsA + "_" + nlhsB;
+        _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
         if(item_exists(_stampGCNodesRec, _curNodesConcat))
           continue;
         else
@@ -858,7 +858,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           sign = signs[idx];
           if(nlhsB== GND)
             continue;
-          _curNodesConcat = nlhsA + "_" + nlhsB;
+          _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
           if(item_exists(_stampGCNodesRec, _curNodesConcat))
             continue;
           else
@@ -909,7 +909,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             nrhsA = nlhsA;
             if(nlhsA == GND)
               continue;
-            _curNodesConcat = nlhsA + "_" + nlhsB;
+            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -936,7 +936,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
               continue;
             //output_oneNodePair_GC_stemp(h_outCxx, nodePair, nodePairLhs, type);
-            _curNodesConcat = nlhsA + "_" + nlhsB;
+            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
