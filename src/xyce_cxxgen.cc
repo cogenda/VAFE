@@ -104,8 +104,9 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"#define KOVERQ        8.61734e-05" <<std::endl;
   h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
   h_outheader <<"#define _VT_(T) ((T) * KOVERQ)" <<std::endl;
-  h_outheader <<"#define _TEMPER_ (ckt->temperature)" <<std::endl;
+  h_outheader <<"#define _TEMPER_ cogendaTemperature" <<std::endl;
   h_outheader <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
+  h_outheader <<"#define _CURRTIME_ (getSolverState().currTime_)" <<std::endl;
   h_outheader << std::endl;
 }
 
@@ -1188,7 +1189,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "bool Instance::processParams () {"<<std::endl;
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
+    h_outCxx << str_format("  if(!given(\"{}\"))",str_toupperC(it->first)) <<std::endl;
     h_outCxx << str_format("    {} = model_.{};",it->first, it->first) <<std::endl;
   }
   h_outCxx << "  updateTemperature(cogendaInstTemp);\n";
@@ -1565,7 +1566,7 @@ genModelProcessParams(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "  {\n";
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  if(!given(\"{}\"))",it->first) <<std::endl;
+    h_outCxx << str_format("  if(!given(\"{}\"))",str_toupperC(it->first)) <<std::endl;
     h_outCxx << str_format("    {} = {};",it->first, it->second.init_value) <<std::endl;
     if(it->second.has_range)
     {
@@ -1748,7 +1749,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx, bool putAtT
   //set all normal VA parameters as instance paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Instance::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Instance::{});", str_toupperC(it->first), it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
   
@@ -1763,7 +1764,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx, bool putAtT
   //set all normal VA parameters as model paramsters
   for(auto it=vaModuleEntries.m_params.begin(); it != vaModuleEntries.m_params.end(); ++it)
   {
-    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Model::{});", it->first, it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
+    h_outCxx << str_format("  p.addPar(\"{}\",static_cast<{}>({}), &COGENDA{}::Model::{});", str_toupperC(it->first), it->second.val_type, it->second.init_value, moduleName, it->first) <<std::endl;
   }
   h_outCxx <<"}\n\n";
 

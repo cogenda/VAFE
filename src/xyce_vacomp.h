@@ -23,7 +23,8 @@
 #define UNDEF -99999
 #define UNFILLED "__UNFILLED__"
 #define GND "GND"
-#define MODEL_DOT "model_."
+#define MODEL_DOT "this->"
+//#define MODEL_DOT "model_."
 #define TEMPLATE_TYPE "GenericT"
 #define ADVAR_TYPE "CogendaFadType"
 
@@ -291,6 +292,13 @@ std::vector<T> get_subvector(std::vector<T> &vec, int istart, int len)
   typename std::vector<T> cut_vector(first, last);
   return cut_vector;
 }
+
+//To change string to upper case
+void str_toupper(string_t &src);
+string_t str_toupperC(string_t src);
+
+//To change string to lower case
+void str_tolower(string_t &src);
 
 //To check if a std::string `src stars with `targ
 bool

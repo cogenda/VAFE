@@ -17,16 +17,18 @@ sstrDict va_c_expr_map = {
   {"end",   "}"},
   {"real",   "double"},
   {"integer","int"},
-  {"$vt",    "_VT_"},
   {"$limit", ""},  //Not impl
-  {"$temperature", "_TEMPER_"},
   {"$strobe",  "printf"},
   {"$display", "printf"},
   {"$debug",   "printf"},
   {"$fstrobe", "fprintf"},
   {"$fopen",   "fopen"},
   {"$fclose",  "fclose"},
+  //Simulator specified fucntions
+  {"$vt",      "_VT_"},
+  {"$temperature", "_TEMPER_"},
   {"$limexp",  "_LIMEXP_"},
+  {"$realtime","_CURRTIME_"}, 
 };
 std::map < int, string_t > va_c_type_map = {
   {vpiRealVar,    "double"},
@@ -72,6 +74,25 @@ std::pair <size_t, const enum_description *>&
 getObjSelInfo(objSelect objSel)
 {
   return objSelMap[objSel];
+}
+
+//To change string to upper case
+void str_toupper(string_t &src)
+{
+  std::transform(src.begin(), src.end(), src.begin(), toupper);
+}
+
+string_t str_toupperC(string_t src)
+{
+  string_t strg = src;
+  std::transform(strg.begin(), strg.end(), strg.begin(), toupper);
+  return strg;
+}
+
+//To change string to lower case
+void str_tolower(string_t &src)
+{
+  std::transform(src.begin(), src.end(), src.begin(), tolower);
 }
 
 bool
@@ -365,7 +386,8 @@ insert_depend_item(int lineNo, string_t& varName, vpiHandle objValue, vaElement&
       if(_obj_type == vpiBranchProbeFuncCall)
       {
         string_t tagName = (string_t) vpi_get_str (vpiName, objValue);
-        std::transform(tagName.begin(), tagName.end(), tagName.begin(), toupper);
+        //std::transform(tagName.begin(), tagName.end(), tagName.begin(), toupper);
+        str_toupper(tagName);
         if(tagName[0] == 'V')
           _etype = VA_Potential;
         else if(tagName[0] == 'I')
@@ -643,7 +665,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     retStr += string_t("if(").insert(0, g_indent_width, ' ');
   }
   retStr += strCond;
-  retStr += ")\n";
+  retStr += ") {\n";
   vpiHandle objIf_body = vpi_handle(vpiStmt, obj);
   if(objIf_body)
   {
@@ -656,6 +678,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     retStr += vpi_resolve_expr_impl (objIf_body, vaSpecialItems);
     g_indent_width -= INDENT_UNIT;
     retStr += "\n";
+    retStr += string_t("}\n").insert(0, g_indent_width, ' ');
   }
 
   vpiHandle objCondElseIf = vpi_handle(vpiElseStmt, obj);
@@ -679,10 +702,12 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     else
       //Else block
     {
-      retStr += string_t("else\n").insert(0, g_indent_width, ' ');
+      retStr += string_t("else {\n").insert(0, g_indent_width, ' ');
       retStr += strCondElseIf;
       //_retStr += strCondElseIf.insert(0, g_indent_width, ' ');
       //vaSpecialItems.m_isSrcLinesElseIf -= 1;
+      retStr += "\n";
+      retStr += string_t("}\n").insert(0, g_indent_width, ' ');
     }
   }
 }
@@ -693,7 +718,8 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
 {
   //Firstly return 0.0 for the orignal assigment line if it's ddt
   string_t _strName = (char *) vpi_get_str (vpiName, obj);
-  std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
+  //std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
+  str_toupper(_strName);
   if(_strName == "DDT")  //Only process ddt
   {
     //strip 'ddt' and resolve its arguments
@@ -747,7 +773,8 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
 {
   string_t _strType = (char *) vpi_get_str (vpiName, obj);
   string_t funcName = _strType;
-  std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
+  //std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
+  str_toupper(_strType);
   
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
   vpiHandle scan_handle;
@@ -818,10 +845,17 @@ void
 resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t anyFuncName = (char *) vpi_get_str (vpiName, obj);
-  bool is_func_limit = false;
+  bool is_func_limit = false, is_system_var = false;
   if(key_exists(va_c_expr_map, anyFuncName))
   {
-    retStr=va_c_expr_map[anyFuncName] + "(";
+    retStr=va_c_expr_map[anyFuncName];
+    if(retStr[0]=='_' and retStr.back()=='_') {
+      //for sysmtem variable, don't insert ()
+      is_system_var = true;
+    }
+    else {
+      retStr += "(";
+    }
     if(anyFuncName.find("$limit",0) != string_t::npos)
       is_func_limit = true;
   }else{
@@ -849,7 +883,8 @@ resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
       if(idx != size-1)
         retStr += ",";
       else
-        retStr += ")";
+        if(!is_system_var)
+          retStr += ")";
     }
   }
   //special handling for $strobe() etc calling
@@ -985,7 +1020,8 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   int lineNo = (int) vpi_get (vpiLineNo, obj);
   vaElectricalType _etype;
   string_t _strType = (char *) vpi_get_str (vpiName, objLhs);
-  std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
+  //std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
+  str_toupper(_strType);
   if(_strType == va_electrical_type_map[VA_Potential])
     _etype = VA_Potential;
   else if(_strType == va_electrical_type_map[VA_Flow])
@@ -1082,7 +1118,8 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     strVec _args;
     string_t _strLhs;
     string_t _strType2 = (char *) vpi_get_str (vpiName, vaSpecialItems.objPended);
-    std::transform(_strType2.begin(), _strType2.end(), _strType2.begin(), toupper);
+    //std::transform(_strType2.begin(), _strType2.end(), _strType2.begin(), toupper);
+    str_toupper(_strType2);
     assert(_strType2 == "DDT");
     for(idx=0; idx < size; idx++)
     {
