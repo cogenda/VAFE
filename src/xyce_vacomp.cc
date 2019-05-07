@@ -197,6 +197,18 @@ str_replace_key(string_t& src, const string_t& from, const string_t& to)
   return isReplaced;
 }
 
+//find if the variable has the depend node in a map
+bool
+has_depend_nodes(string_t key, dependVec& depVector)
+{
+  for(auto it=depVector.begin(); it != depVector.end(); ++it)
+  {
+    if(it->dependNodes.size() || it->depend_Branchnodes.size())
+      return true;
+  }
+  return false;
+}
+
 //get the a range variable's plain string,e.g., [4, inf)
 string_t 
 get_one_range(valueRange& range)
@@ -255,6 +267,23 @@ getAnalogFuncArgDef(string_t& analogFuncArgs,
   strPair _anaFuncDefs = {strArgDef,strFuncVarDef};
   return _anaFuncDefs;
 }
+
+//To lookup m_contrib vector to find the right item matched the given contrib_lhs
+int
+findContribItemWithLhs(string_t lhs,vaElement& vaSpecialItems)
+{
+  int idx=0;
+  std::vector < contribElement > &_contribs =  vaSpecialItems.m_contribs;
+  for(std::vector < contribElement > ::iterator it=_contribs.begin(); it != _contribs.end(); ++it,++idx)
+  {
+    if(it->contrib_lhs == lhs)
+    {
+      return idx;
+    }
+  }
+  return idx;
+}
+
 
 //To obtain or create the depend item of the variable with `varName' and line_No
 dependTargInfo& 
@@ -1171,6 +1200,7 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.nodes = nodes;
     _contrib.rhs_etype = VA_Dynamic;
     insert_depend_item(lineNo, _strLhs, vaSpecialItems.objPended, vaSpecialItems);
+    insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems); //add dc part if any?
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
     _contrib.depend_Branchnodes = vaSpecialItems.m_dependTargMap[_strLhs].back().depend_Branchnodes;
     if(vaSpecialItems.m_nodeContainer.size())

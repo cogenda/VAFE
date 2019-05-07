@@ -730,7 +730,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           for(int idx=0; idx<2; idx++) { //loop for each node in depend node pair
             nlhsB = node_depends[idx];
             sign  = signs[idx];
-            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
             if(nlhsB == GND)
               continue;
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
@@ -763,7 +763,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           {
             nlhsA = node_depends[idx];
             nrhsA = nlhsA;
-            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -776,9 +776,15 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
               ((type == "Gptr" || type == "Goffest") && it->etype == VA_Flow))
             {
               //output_oneNodePair_GC_stemp(h_outCxx, nodePair, nodePairLhs, type);
+              _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsB, nlhsA); //swap A,B
+              if(item_exists(_stampGCNodesRec, _curNodesConcat))
+                continue;
+              else
+                _stampGCNodesRec.push_back(_curNodesConcat);
+
               rhsUnit.flag = "only";
               rhsUnit.val = unitStamps[idx];
-              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsB, nlhsA, sign, nrhsA, nrhsB, rhsUnit); //swap A,B
+              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsB, nlhsA, sign, nrhsA, nrhsB, rhsUnit); //swap A,B               
               rhsUnit.flag = "no"; rhsUnit.val = "";
             }
           }
@@ -800,7 +806,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
               continue;
 
-            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -827,7 +833,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
         nrhsA = nlhsA;
         if( i > 0 and nlhsA == GND)
           continue;
-        _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+        _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
         if(item_exists(_stampGCNodesRec, _curNodesConcat))
           continue;
         else
@@ -860,7 +866,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
           sign = signs[idx];
           if(nlhsB== GND)
             continue;
-          _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+          _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
           if(item_exists(_stampGCNodesRec, _curNodesConcat))
             continue;
           else
@@ -885,12 +891,19 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
       //added additional 2 Branches of a,b for V(a,b)<+ ... (like VCVS,CCVS,CCCS elements)
       if(type == "Gptr" || type == "Goffest")
       {
-        rhsUnit.flag = "only"; rhsUnit.val = unitStamps[0];
-        nlhsB = nodePairVec_lhs[0];
-        output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
-        nlhsB = nodePairVec_lhs[1]; rhsUnit.val = unitStamps[1];
-        if(nlhsB != GND)
-          output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+        rhsUnit.flag = "only";
+        for(int idx=0; idx<2; idx++) {
+          rhsUnit.val = unitStamps[idx];
+          nlhsB = nodePairVec_lhs[idx];
+          _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
+          if(item_exists(_stampGCNodesRec, _curNodesConcat))
+            continue;
+          else
+            _stampGCNodesRec.push_back(_curNodesConcat);
+
+          if(nlhsB != GND)
+            output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+        }
         rhsUnit.flag = "no"; rhsUnit.val = "";
       }
       
@@ -911,7 +924,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             nrhsA = nlhsA;
             if(nlhsA == GND)
               continue;
-            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -938,7 +951,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
             if(idx==0 && it->etype == VA_Flow)  //ignore the 1st item when I(a,b)<+...
               continue;
             //output_oneNodePair_GC_stemp(h_outCxx, nodePair, nodePairLhs, type);
-            _curNodesConcat = str_format("{}_{}_{}",it->etype, nlhsA, nlhsB);
+            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
             if(item_exists(_stampGCNodesRec, _curNodesConcat))
               continue;
             else
@@ -974,9 +987,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       string_t varExpr = *ivec;
       string_t varName = str_split(varExpr, '=', ' ')[0];
       bool isFadType = false; 
-      if(key_exists(vaModuleEntries.m_dependTargMap, varName))
+      if(key_exists(vaModuleEntries.m_dependTargMap, varName) && varType == "double")
       {
-        if(vaModuleEntries.m_dependTargMap[varName].size() > 0)
+        if(has_depend_nodes(varName, vaModuleEntries.m_dependTargMap[varName]))
           isFadType = true;
       }
       if(isFadType)
@@ -1051,6 +1064,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   INSERT_EMPTY_LINE(h_outCxx);
 
   _codeVec = &vaModuleEntries.m_resolvedCcodes;
+  strVec strAdditionalStampBranch;
   for (strVec::iterator ivec = _codeVec->begin (); 
       ivec != _codeVec->end (); ++ivec)
   {
@@ -1076,7 +1090,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         continue;
       }
       int n_space = str_get_number_first_space(line);
-      string_t str_nspace = string_t(n_space, ' ');
+      string_t str_nspace = string_t(n_space, ' '), _strTmp="";
       for(auto it=line_splits.begin(); it != line_splits.end(); ++it)
         *it = str_strip(*it, " ", 0);
       if(str_startswith(line_splits[0], "Icontrib_") || str_startswith(line_splits[0], "Qcontrib_")
@@ -1086,6 +1100,18 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         strVec _strVec = str_split(line_splits[0], '_', ' ');
         string_t nodPos,nodNeg,rhsExpr;
         nodPos = _strVec[1];
+        string_t contribKey = line_splits[0];
+        //Try to find the current contrib's info in m_contribs
+        if(contribKey.back() == '+' || contribKey.back() == '-')
+          str_remove_tail(contribKey, 1);
+        unsigned int idx_contrib = findContribItemWithLhs(contribKey,vaModuleEntries);
+        contribElement thisContrib;
+        bool isFoundContrib = false;
+        if(idx_contrib < vaModuleEntries.m_contribs.size())
+        {
+          thisContrib = vaModuleEntries.m_contribs.at(idx_contrib);
+          isFoundContrib = true;
+        }
         if(_strVec.size() >= 3)
         {
           nodNeg = _strVec[2];
@@ -1099,7 +1125,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
           if(nodNeg == "")
             nodNeg = "GND";
         }
-        
+        bool isBothPorts = false;
+        if(item_exists(vaModuleEntries.m_modulePorts,nodPos) && item_exists(vaModuleEntries.m_modulePorts,nodNeg))
+          isBothPorts = true;
         rhsExpr = line_splits[1];
         // I(ci,ei) <+ (Ic1)
         //staticContributions[cogendaNodeID_bi] += Ic1;
@@ -1123,14 +1151,35 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         else if(line_splits[0][0] == 'V')
         {
           h_outCxx << "//V-contrib..." << std::endl;
-          h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
-          h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodPos, nodPos,nodNeg);
+          if(isFoundContrib && thisContrib.rhs_etype == VA_Dynamic)
+            h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
+          else
+            h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
+          _strTmp = str_format("staticContributions[cogendaNodeID_{}] += probeVars[cogendaProbeID_I_{}_{}];\n",nodPos, nodPos,nodNeg);
+          if(! item_exists(strAdditionalStampBranch, _strTmp))
+            strAdditionalStampBranch.push_back(_strTmp);
           if(_strVec.size() >= 3 && nodNeg != GND) {
-            h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodNeg, nodPos,nodNeg);
-            h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}]-(*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos,nodNeg);
+            _strTmp = str_format("staticContributions[cogendaNodeID_{}] -= probeVars[cogendaProbeID_I_{}_{}];\n",nodNeg, nodPos,nodNeg);
+            if(! item_exists(strAdditionalStampBranch, _strTmp))
+              strAdditionalStampBranch.push_back(_strTmp);
+            if(isBothPorts) //if both port nodes
+            {
+              _strTmp = str_format("staticContributions[cogendaBRA_ID_{}_{}] -= probeVars[cogendaProbeID_I_{}_{}];\n",nodPos, nodNeg, nodPos,nodNeg);
+              if(! item_exists(strAdditionalStampBranch, _strTmp))
+                strAdditionalStampBranch.push_back(_strTmp);
+            }
+            else        //if not are both port nodes
+            {
+              _strTmp=str_format("staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}]-(*solVectorPtr)[li_{}];\n", nodPos, nodNeg, nodPos,nodNeg);
+              if(! item_exists(strAdditionalStampBranch, _strTmp))
+                strAdditionalStampBranch.push_back(_strTmp);
+            }
           } 
-          else 
-            h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos);
+          else {
+            _strTmp=str_format("staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}];\n", nodPos, nodNeg, nodPos);
+            if(! item_exists(strAdditionalStampBranch, _strTmp))
+              strAdditionalStampBranch.push_back(_strTmp);
+          }
 
           isProcessed = true;
           continue;
@@ -1171,6 +1220,10 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         std::cout << "WARN line not processed: " << line << std::endl;
     }
   }
+  //print out the additional stamping items for V(a,b)<+...
+  for(auto it=strAdditionalStampBranch.begin(); it != strAdditionalStampBranch.end(); ++it)
+    h_outCxx << *it;
+
   // should copy all the data from **Contributions to
   // the lead current F vector to make sure all collapsed node
   // contributions get summed into the external nodes.

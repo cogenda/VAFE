@@ -324,12 +324,25 @@ int str_get_number_first_space(const string_t& line);
 
 void str_convert_unit(string_t& src);
 
+//find if the variable has the depend node in a map
+bool has_depend_nodes(string_t key, dependVec& depVector);
+
 string_t 
 get_one_range(valueRange& range);
+
+int
+findContribItemWithLhs(string_t lhs,vaElement& vaSpecialItems);
 
 strPair
 getAnalogFuncArgDef(string_t& analogFuncArgs, 
     sstrVecDict& analogFuncVars, bool isTemplateType);
+
+template<typename T>
+void swapAB(T& a, T& b)
+{
+  T c;
+  c = a; a = b; b = c;
+}
 
 template<typename T> 
 void setModuleArgDef(T& moduleArgsDef,  std::map<T, std::vector<T> >& moduleVars)
