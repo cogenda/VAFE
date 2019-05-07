@@ -103,7 +103,8 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"// ---------- Macros Definitions ----------" <<std::endl;
   h_outheader <<"#define KOVERQ        8.61734e-05" <<std::endl;
   h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
-  h_outheader <<"#define _VT_(T) ((T) * KOVERQ)" <<std::endl;
+  h_outheader <<"#define _VT0_(T) ((T) * KOVERQ)" <<std::endl;
+  h_outheader <<"#define _VT_ cogenda_vt_nom" <<std::endl;
   h_outheader <<"#define _TEMPER_ cogendaTemperature" <<std::endl;
   h_outheader <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
   h_outheader <<"#define _CURRTIME_ (getSolverState().currTime_)" <<std::endl;
@@ -970,7 +971,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
     for(auto ivec=imap->second.begin(); ivec != imap->second.end(); ++ivec)
     {
       string_t varType = imap->first;
-      string_t varName = *ivec;
+      string_t varExpr = *ivec;
+      string_t varName = str_split(varExpr, '=', ' ')[0];
       bool isFadType = false; 
       if(key_exists(vaModuleEntries.m_dependTargMap, varName))
       {
@@ -978,9 +980,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
           isFadType = true;
       }
       if(isFadType)
-        h_outCxx << str_format("  {} {};", ADVAR_TYPE,varName) << std::endl;
+        h_outCxx << str_format("  {} {};", ADVAR_TYPE,varExpr) << std::endl;
       else
-        h_outCxx << str_format("  {} {};", varType, varName) << std::endl;
+        h_outCxx << str_format("  {} {};", varType, varExpr) << std::endl;
     }
   }
   int n_probeVars = vaModuleEntries.m_probeConstants["V"].size() + vaModuleEntries.m_probeConstants["I"].size();
@@ -1094,6 +1096,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         {
           if(nodPos[nodPos.size()-1] == '+')
             str_remove_tail(nodPos, 1);
+          if(nodNeg == "")
+            nodNeg = "GND";
         }
         
         rhsExpr = line_splits[1];
@@ -1121,9 +1125,13 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
           h_outCxx << "//V-contrib..." << std::endl;
           h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
           h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodPos, nodPos,nodNeg);
-          if(_strVec.size() >= 3 && nodNeg != GND)
+          if(_strVec.size() >= 3 && nodNeg != GND) {
             h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= probeVars[cogendaProbeID_I_{}_{}];\n",str_nspace,nodNeg, nodPos,nodNeg);
-          h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}]-(*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos,nodNeg);
+            h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}]-(*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos,nodNeg);
+          } 
+          else 
+            h_outCxx << str_format("{}staticContributions[cogendaBRA_ID_{}_{}] -= (*solVectorPtr)[li_{}];\n",str_nspace, nodPos, nodNeg, nodPos);
+
           isProcessed = true;
           continue;
         }        
@@ -1554,7 +1562,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "bool Instance::updateTemperature(const double & temperatureTemp)\n";
   h_outCxx << "{\n";
   h_outCxx << "  cogendaTemperature = temperatureTemp;\n";
-  h_outCxx << "  cogenda_vt_nom = _VT_(temperatureTemp);\n"; //TODO??
+  h_outCxx << "  cogenda_vt_nom = _VT0_(temperatureTemp);\n"; //TODO??
   h_outCxx << "  return true;\n";
   h_outCxx << "}\n";  
 }

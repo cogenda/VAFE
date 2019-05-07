@@ -29,6 +29,8 @@ sstrDict va_c_expr_map = {
   {"$temperature", "_TEMPER_"},
   {"$limexp",  "_LIMEXP_"},
   {"$realtime","_CURRTIME_"}, 
+  {"$realtime","_CURRTIME_"}, 
+  {"$abstime","_CURRTIME_"}, 
 };
 std::map < int, string_t > va_c_type_map = {
   {vpiRealVar,    "double"},
