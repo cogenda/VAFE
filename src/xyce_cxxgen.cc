@@ -102,12 +102,17 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"#include <N_UTL_Math.h>" <<std::endl;
   h_outheader <<"// ---------- Macros Definitions ----------" <<std::endl;
   h_outheader <<"#define KOVERQ        8.61734e-05" <<std::endl;
+  h_outheader <<"using std::max;" <<std::endl;
+  h_outheader <<"using std::min;" <<std::endl;
   h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
   h_outheader <<"#define _VT0_(T) ((T) * KOVERQ)" <<std::endl;
   h_outheader <<"#define _VT_ cogenda_vt_nom" <<std::endl;
   h_outheader <<"#define _TEMPER_ cogendaTemperature" <<std::endl;
   h_outheader <<"#define _LIMEXP_(x) ((x)<log(ELIM)? exp(x) : (ELIM*(x) + ELIM - ELIM*log(ELIM)))" <<std::endl;
   h_outheader <<"#define _CURRTIME_ (getSolverState().currTime_)" <<std::endl;
+  h_outheader <<"#define analysis_noise (getSolverState().noiseFlag)" <<std::endl;
+  h_outheader <<"#define analysis_dc (getSolverState().dcsweepFlag || getSolverState().dcopFlag)" <<std::endl;
+  h_outheader <<"#define analysis_tran (getSolverState().transientFlag)" <<std::endl;
   h_outheader << std::endl;
 }
 
@@ -1884,5 +1889,6 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
 
   return Ret_NORMAL;
 }
+
 
 

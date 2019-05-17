@@ -873,7 +873,7 @@ resolve_block_branchProbFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSp
 
 //For any function call: builtin, system, analog function call, etc
 void 
-resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
+resolve_block_anyFunCall(vpiHandle obj, string_t line, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t anyFuncName = (char *) vpi_get_str (vpiName, obj);
   bool is_func_limit = false, is_system_var = false;
@@ -895,7 +895,14 @@ resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
       std::cout << "Error Not supported system function: `" << anyFuncName << "'" <<std::endl;
       vaSpecialItems.retFlag = Ret_ERROR;
     }
-    retStr=anyFuncName + "(";
+    else if(anyFuncName.find("analysis",0) != string_t::npos) {
+      strVec tmpVec = str_split(line, '\"', '(');
+      str_replace_key(tmpVec[1], ")", ""); //remove the leading and tail ')' of argument in analysis function call
+      retStr = anyFuncName + "_" + tmpVec[1];
+      return;
+    }
+    else
+      retStr=anyFuncName + "(";
   }
   vpiHandle iterator = vpi_iterate (vpiArgument, obj);
   vpiHandle scan_handle;
@@ -913,9 +920,10 @@ resolve_block_anyFunCall(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIt
       }
       if(idx != size-1)
         retStr += ",";
-      else
+      else {
         if(!is_system_var)
           retStr += ")";
+      }
     }
   }
   //special handling for $strobe() etc calling
@@ -1241,9 +1249,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
           else if(cur_obj_type == vpiAnalogBuiltinFuncCall 
                || cur_obj_type == vpiSysFuncCall
                || cur_obj_type == vpiAnalogSysTaskCall   //$strobe()       
-               || cur_obj_type == vpiAnalogSysFuncCall)
+               || cur_obj_type == vpiAnalogSysFuncCall
+               || cur_obj_type == vpiAnalysisFuncCall)  //analysis(...)
           {
-            resolve_block_anyFunCall(obj, _retStr, vaSpecialItems);
+            resolve_block_anyFunCall(obj, strline, _retStr, vaSpecialItems);
           }
           else if (cur_obj_type == vpiBranchProbeFuncCall  //V(a,c)
                || cur_obj_type == vpiAnalogFuncCall)       //V(id)
@@ -1367,6 +1376,8 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             _retStr = strline;
             resolve_block_eventControl(obj, _retStr, vaSpecialItems);
           }
+          else
+            std::cout << "Warn: Unknown syntax \"" << strline << "\"" << std::endl;
 
 	  if (verbose)
 	  {
