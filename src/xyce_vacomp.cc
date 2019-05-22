@@ -876,7 +876,9 @@ void
 resolve_block_anyFunCall(vpiHandle obj, string_t line, string_t& retStr, vaElement& vaSpecialItems)
 {
   string_t anyFuncName = (char *) vpi_get_str (vpiName, obj);
-  bool is_func_limit = false, is_system_var = false;
+  bool is_func_limit = false, is_system_var = false, is_analog_sysTaskCall = false;
+  if(vpiAnalogSysTaskCall == vpi_get (vpiType, obj))
+    is_analog_sysTaskCall = true;
   if(key_exists(va_c_expr_map, anyFuncName))
   {
     retStr=va_c_expr_map[anyFuncName];
@@ -908,11 +910,18 @@ resolve_block_anyFunCall(vpiHandle obj, string_t line, string_t& retStr, vaEleme
   vpiHandle scan_handle;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
+  string_t keyArg;
   for(idx=0; idx < size; idx++)
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
-      retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);         
+      keyArg = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
+      // tansfer to normal variable instead of FadType (e.g., in $strobe)
+      if(is_analog_sysTaskCall && idx >0 && 
+        has_depend_nodes(keyArg, vaSpecialItems.m_dependTargMap[keyArg]))
+        retStr += keyArg + ".val()";        
+      else
+        retStr += keyArg;         
       if(is_func_limit) //for $limit, do nothing and return the 1st arg
       {
         retStr += ")";
@@ -1014,7 +1023,12 @@ resolve_block_assign(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     //replace the 'function-name = Rhs' as 'return Rhs;'
     retStr += "return " + _strRhs + ";";
   else
-    retStr += _strLhs   + " = "   +  _strRhs + ";";
+  {
+    if(!has_depend_nodes(_strLhs, vaSpecialItems.m_dependTargMap[_strLhs]))
+      retStr += _strLhs   + " = (("   +  _strRhs + ")*UNITFAD).val();";
+    else
+      retStr += _strLhs   + " = "   +  _strRhs + ";";
+  }
   retStr.insert(0, g_indent_width, ' ');
 }
 

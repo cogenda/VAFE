@@ -594,6 +594,7 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   h_outheader << std::endl;
   h_outheader << "class Model;" << std::endl;
   h_outheader << "class Instance;" << std::endl;
+  h_outheader << str_format("const {} UNITFAD={}(1.0);", ADVAR_TYPE,ADVAR_TYPE) << std::endl;
   h_outheader << std::endl;
 
   //struct DeviceTraits
@@ -1889,6 +1890,5 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
 
   return Ret_NORMAL;
 }
-
 
 
