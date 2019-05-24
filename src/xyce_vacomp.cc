@@ -327,7 +327,7 @@ insert_depNodes_one_targ(vpiHandle obj, int lineNo, dependTargInfo& depItem,
         //Don't insert duplicated item!
         insert_vec2vec_unique(depItem.dependNodes, ivec->dependNodes);
         insert_vec2vec_unique(depItem.depend_Branchnodes, ivec->depend_Branchnodes);
-        break;
+        //break;  //fixed we don't just insert one depend item!
       }
     }
   }
@@ -515,16 +515,32 @@ resolve_block_begin(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   vpiHandle scan_handle;
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
+  string_t tempStr;
+  strVec resolvedCodes;
   retStr += string_t("{\n").insert(0, g_indent_width, ' ');
   for(idx=0; idx < size; idx++)
   {
     if((scan_handle = vpi_scan_index (iterator, cnt++)) != NULL)
     {
       g_indent_width += INDENT_UNIT;
-      retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
+      tempStr = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
+      //retStr += tempStr;
       g_indent_width -= INDENT_UNIT;
     }
-    retStr += "\n";
+    //retStr += "\n";
+    if(!vaSpecialItems.m_processedInitStepBlock) {
+      resolvedCodes.push_back(tempStr+"\n");
+    } else if(resolvedCodes.size()>0) {
+      vaSpecialItems.m_resolvedInitStepCcodes.insert(vaSpecialItems.m_resolvedInitStepCcodes.begin(),resolvedCodes.begin(),resolvedCodes.end()); 
+      resolvedCodes.clear();
+    } else {
+      retStr += tempStr+"\n";
+    }
+  }
+  //If there is no $inital_step block
+  if(!vaSpecialItems.m_processedInitStepBlock && resolvedCodes.size()>0) {
+    retStr += concat_vector2string(resolvedCodes,"");
+    resolvedCodes.clear();
   }
   retStr += string_t("}\n").insert(0, g_indent_width, ' ');
 }
@@ -917,9 +933,15 @@ resolve_block_anyFunCall(vpiHandle obj, string_t line, string_t& retStr, vaEleme
     {
       keyArg = vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
       // tansfer to normal variable instead of FadType (e.g., in $strobe)
-      if(is_analog_sysTaskCall && idx >0 && 
-        has_depend_nodes(keyArg, vaSpecialItems.m_dependTargMap[keyArg]))
-        retStr += keyArg + ".val()";        
+      if(is_analog_sysTaskCall && idx >0) {
+        if(has_depend_nodes(keyArg, vaSpecialItems.m_dependTargMap[keyArg]) ||
+            str_startswith(keyArg, "probeVars"))
+          retStr += keyArg + ".val()";     
+        else if (item_exists(vaSpecialItems.m_moduleVars["double"], keyArg) )
+          retStr += str_format("(({})*UNITFAD).val()",keyArg);    
+        else
+          retStr += keyArg;     
+      }
       else
         retStr += keyArg;         
       if(is_func_limit) //for $limit, do nothing and return the 1st arg
@@ -1018,6 +1040,8 @@ resolve_block_assign(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   string_t _strRhs = vpi_resolve_expr_impl (objRhs, vaSpecialItems);
   //insert a depend item for this Lhs if needs
   int lineNo = (int) vpi_get (vpiLineNo, obj);
+  //if(str_startswith(_strLhs, "Idsa")) //test codes
+  //  retStr += " ";
   insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
   if( find_item_container(vaSpecialItems.m_analogFuncNames, _strLhs))
     //replace the 'function-name = Rhs' as 'return Rhs;'
@@ -1050,6 +1074,7 @@ resolve_block_eventControl(vpiHandle obj, string_t& retStr, vaElement& vaSpecial
     _retStr.insert(0, g_indent_width, ' ');
     retStr += _retStr;
     vaSpecialItems.m_resolvedInitStepCcodes.push_back(retStr);
+    vaSpecialItems.m_processedInitStepBlock= true;
     retStr = ""; //not insert into module container
     return;
   }
@@ -1415,6 +1440,7 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   vaSpecialItems.m_needMergDependItem = false;
   vaSpecialItems.lineNo_ifelse_case = UNDEF;
   vaSpecialItems.m_isUseTemplateTypeAnalogFunc = true;
+  vaSpecialItems.m_processedInitStepBlock= false;
   vpiHandle obj;
   int cur_obj_type = (int) vpi_get (vpiType, root);
   if(cur_obj_type == vpiModule)
@@ -1604,6 +1630,7 @@ CxxGenFiles (vpiHandle root)
   if(retH > 1 || retC > 1)
     std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
+
 
 
 

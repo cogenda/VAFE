@@ -232,6 +232,7 @@ typedef struct _vaElement {
   vpiHandle objPended;
   int m_isSrcLinesElseIf;    
   bool m_needProcessDepend;
+  bool m_processedInitStepBlock; //flag to precesse @(initial_step) begin ... end
   bool m_isUseTemplateTypeAnalogFunc; //use C++ template function in *.h file for AnalogFunctions
   //merge the depend node list when a LHS within a switch-case or if-else block
   bool m_needMergDependItem;
@@ -496,5 +497,4 @@ void CxxGenFiles (vpiHandle root);
 #endif
 
 #endif
-
 

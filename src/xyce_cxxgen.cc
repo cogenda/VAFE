@@ -102,6 +102,7 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"#include <N_UTL_Math.h>" <<std::endl;
   h_outheader <<"// ---------- Macros Definitions ----------" <<std::endl;
   h_outheader <<"#define KOVERQ        8.61734e-05" <<std::endl;
+  h_outheader <<"#define P_CELSIUS0    273.15" <<std::endl;
   h_outheader <<"using std::max;" <<std::endl;
   h_outheader <<"using std::min;" <<std::endl;
   h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
@@ -1258,6 +1259,11 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     h_outCxx << str_format("  if(!given(\"{}\"))",str_toupperC(it->first)) <<std::endl;
     h_outCxx << str_format("    {} = model_.{};",it->first, it->first) <<std::endl;
+    //special handling for Xyce since the CtoK conversion has been done by Xyce
+    if(str_toupperC(it->first) == "TNOM") {
+      h_outCxx << str_format("  else",str_toupperC(it->first)) <<std::endl;
+      h_outCxx << str_format("    {} -= P_CELSIUS0;",it->first) <<std::endl;
+    }
   }
   h_outCxx << "  updateTemperature(cogendaInstTemp);\n";
   h_outCxx << "  return true;\n";
@@ -1635,6 +1641,11 @@ genModelProcessParams(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     h_outCxx << str_format("  if(!given(\"{}\"))",str_toupperC(it->first)) <<std::endl;
     h_outCxx << str_format("    {} = {};",it->first, it->second.init_value) <<std::endl;
+    //special handling for Xyce since the CtoK conversion has been done by Xyce
+    if(str_toupperC(it->first) == "TNOM") {
+      h_outCxx << str_format("  else",str_toupperC(it->first)) <<std::endl;
+      h_outCxx << str_format("    {} -= P_CELSIUS0;",it->first) <<std::endl;
+    }
     if(it->second.has_range)
     {
       string_t lower_Op = it->second.lower_Op == vpiGeOp ? ">=" : ">";
