@@ -41,6 +41,7 @@ typedef std::map < string_t, strVec > sstrVecDict;
 typedef std::map < string_t, string_t > sstrDict;
 typedef std::map < string_t, struct _valueRange> paramDict;
 typedef std::map < string_t, strPairVec> sstrPairVecDict;
+typedef std::map < strPair,  strVec> strPairStrVecDict;
 
 const unsigned int N_VARS_PER_COL=12;
 const unsigned int INDENT_UNIT=2;

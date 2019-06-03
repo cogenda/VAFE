@@ -658,6 +658,37 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
 }
 
+void output_MultipleNodePair_GC_stemp(std::ofstream& h_outCxx,string_t& type,const string_t& ptrKey,
+    strPairStrVecDict& stampDict, const string_t tagKey="NodeID")
+{
+  string_t outString="";
+  string_t sign="",nlhsA, nlhsB, nrhsB;
+  for (auto imap = stampDict.begin (); imap != stampDict.end (); ++imap)
+  {
+    nlhsA = imap->first.first;
+    nlhsB = imap->first.second;
+    for(auto ivec = imap->second.begin (); ivec !=  imap->second.end (); ++ivec) {
+      sign = (*ivec)[0];
+      nrhsB = str_strip(*ivec, "+-", 1);  //strip the leading char (sign)
+      if(ivec == imap->second.begin ()) {
+        if(type == "Gptr") 
+          outString=str_format("  (*f_{}_Equ_{}_{}_Ptr) +=",nlhsA, nlhsB,ptrKey);
+        else if(type == "Goffest") 
+          outString=str_format("  dFdx[li_{}][m_{}_Equ_{}_{}Offset] +=",nlhsA,nlhsA, nlhsB,ptrKey);
+        else if(type == "Cptr")
+          outString=str_format("  (*q_{}_Equ_{}_{}_Ptr) +=",nlhsA, nlhsB,ptrKey);
+        else if(type == "Coffest")
+          outString=str_format("  dQdx[li_{}][m_{}_Equ_{}_{}Offset] +=",nlhsA, nlhsA,nlhsB,ptrKey);
+      }
+      if(type == "Gptr" || type == "Goffest")
+        outString += str_format("  {}staticContributions[cogenda{}_{}].dx(cogendaProbeID_{})", sign,tagKey,nlhsA,nrhsB);
+      else if(type == "Cptr" || type == "Coffest")
+        outString += str_format("  {}dynamicContributions[cogenda{}_{}].dx(cogendaProbeID_{})",sign,tagKey,nlhsA,nrhsB);
+    }
+    h_outCxx << outString << ";" << std::endl;
+  }
+}
+
 //function to format output G/C item
 //type: Gptr/Goffest,Cptr/Coffest
 //ptrKey: Node, Var
@@ -715,8 +746,9 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
   strVec signs = {"+","-"};
   strVec unitStamps = {"-1","+1"};
   flagDict rhsUnit={"no",""};
-  string_t ptrKey, nlhsA, nlhsB, sign, nrhsA, nrhsB;
+  string_t ptrKey, nlhsA, nlhsB, sign, nrhsA, nrhsB, tmpStr;
   bool hasDependNodes = true;
+  strPairStrVecDict gStaticMatrix, cStaticMatrix, *pStaticMatrix;
   for(auto it=vaModuleEntries.m_contribs.begin(); 
     it != vaModuleEntries.m_contribs.end(); ++it)
   {
@@ -725,39 +757,33 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
     else
       nodePairLhs = {it->nodes.at(0),GND};   
     if(it->etype != VA_Potential) {
-      //loop for each two nodes in lhs
-      for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row)
-      {
-        for(auto node_col=it->depend_nodes.begin(); node_col != it->depend_nodes.end(); ++node_col)
+      if((type == "Gptr" || type == "Goffest") && it->rhs_etype == VA_Static && it->etype == VA_Flow)
+        pStaticMatrix = &gStaticMatrix;
+      else if ((type == "Cptr" || type == "Coffest") && it->etype == VA_Charge)
+        pStaticMatrix = &cStaticMatrix;
+      else
+        continue;
+      for(auto node_row=it->nodes.begin(); node_row != it->nodes.end(); ++node_row) {
+        for(auto node_col=vaModuleEntries.m_moduleNets.begin(); node_col != vaModuleEntries.m_moduleNets.end(); ++node_col)
         {
           nlhsA = *node_row;
-          nrhsA = nlhsA;
-          strVec node_depends = {node_col->first, node_col->second};
-          nrhsB = concat_vector2string(node_depends,"_");
-          for(int idx=0; idx<2; idx++) { //loop for each node in depend node pair
-            nlhsB = node_depends[idx];
-            sign  = signs[idx];
-            _curNodesConcat = str_format("{}_{}_{}_{}",rhsUnit.flag, it->etype, nlhsA, nlhsB);
-            if(nlhsB == GND)
-              continue;
-            if(item_exists(_stampGCNodesRec, _curNodesConcat))
-              continue;
-            else
-              _stampGCNodesRec.push_back(_curNodesConcat);
-            if(__DEBUG__) {
-              if(!item_exists(instanceInfoCxx.m_probeConsts, str_format("V_{}_{}",node_col->first,node_col->second)) || 
-                 !item_exists(instanceInfoCxx.stampNodeMtrix,strPair(node_col->first,node_col->second))) //no need it? FIXME
-              {
-                std::cout << str_format("**dbg: V_{}_{} Not found ^^^ \n", node_col->first,node_col->second);
-                //continue;
-              }
+          nlhsB = *node_col;
+          for(auto ndpair=it->depend_nodes.begin(); ndpair != it->depend_nodes.end(); ++ndpair) {
+            if(nlhsB == ndpair->second) {
+              sign = "-";
             }
-            if(  ((type == "Gptr" || type == "Goffest") && it->rhs_etype == VA_Static && it->etype == VA_Flow)
-              || ((type == "Cptr" || type == "Coffest") && it->etype == VA_Charge))
-              output_oneNodePair_GC_stemp(h_outCxx,type,"Node",nlhsA, nlhsB, sign, nrhsA, nrhsB, rhsUnit);
+            else if(nlhsB == ndpair->first) {
+              sign = "+";
+            }
+            else
+              continue;
+            tmpStr = str_format("{}V_{}_{}", sign, ndpair->first, ndpair->second);
+            if(!item_exists((*pStaticMatrix)[strPair(nlhsA,nlhsB)], tmpStr))
+              (*pStaticMatrix)[strPair(nlhsA,nlhsB)].push_back(tmpStr);
           }
         }
       }
+      
       //processing BRA items generated by I(a,b)<+I(c,d)
       if(it->depend_Branchnodes.size() >0) {
         for(auto node_col=it->depend_Branchnodes.begin(); node_col != it->depend_Branchnodes.end(); ++node_col)
@@ -974,6 +1000,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
       }          
     }
   }      
+  output_MultipleNodePair_GC_stemp(h_outCxx,type,"Node",gStaticMatrix);
 }
 
 //generate C-codes for VA module codes, model="model" for class Model "instance" for class Instance
