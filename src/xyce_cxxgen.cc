@@ -117,10 +117,11 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader << std::endl;
 }
 
+
 void
 CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
 {
-  int n_collapsible=0;
+  int n_collapsible=vaModuleEntries.m_collapedNodes.size();
   int n_whitenoise=0;
   int n_flickernoise=0;
   int n_limitedProbes=0;
@@ -257,7 +258,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
         }
     } else {
     // consider the BRA items with VA_Potential contrib
-    //if(it->etype == VA_Potential) {
+      if(it->rhs_etype == VA_ZERO) 
+        continue;
       if(it->nodes.size() > 1)
         nodePairLhs = {it->nodes.at(0),it->nodes.at(1)};
       else
@@ -425,7 +427,10 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   //TODO
   //declareCollapsibleBools
   h_outheader << "    //Collapsible Bools\n";
-  //TODO
+  for(auto it=vaModuleEntries.m_collapedNodes.begin(); 
+      it != vaModuleEntries.m_collapedNodes.end(); ++it) {
+    h_outheader << str_format("    bool collapseNode_{};\n",it->first);
+  }
   //xyceDeclareFadArrays
   h_outheader << "    //FadArrays\n";
   h_outheader << " // Arrays to hold probes\n";
@@ -857,6 +862,8 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
       }
     } else { //processing v(a,b) <+ ... BRA items
       //1st part: f/q_n1/n2_Equ_BRA_n1_n2_Var_Ptr
+      if(it->rhs_etype == VA_ZERO) 
+        continue;
       rhsUnit.flag = "no"; rhsUnit.val = ""; sign = "+";
       strVec nodePairVec_lhs = {nodePairLhs.first,nodePairLhs.second};
       for(int i=0; i<2; i++) {
@@ -1186,6 +1193,10 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         else if(line_splits[0][0] == 'V')
         {
           h_outCxx << "//V-contrib..." << std::endl;
+          if(::atoi(rhsExpr.c_str()) == 0) {
+            h_outCxx << "; //do nothing for collapsed node.\n";
+            continue;
+          }
           if(isFoundContrib && thisContrib.rhs_etype == VA_Dynamic)
             h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
           else
@@ -1360,6 +1371,33 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
   
   h_outCxx << "  PairVector collapsedNodes;\n";
+  h_outCxx << "  collapseNodes();\n";
+  string_t collapseNode="", otherNode="";
+  strVec collapseNodeVec;
+  for(auto it=vaModuleEntries.m_contribs.begin(); 
+    it != vaModuleEntries.m_contribs.end(); ++it) {
+    if (it->rhs_etype != VA_ZERO)
+      continue;
+    for(auto itcoll=vaModuleEntries.m_collapedNodes.begin();
+        itcoll != vaModuleEntries.m_collapedNodes.end(); ++itcoll) {
+      collapseNodeVec.push_back(itcoll->first);
+    }
+
+    if(item_exists(collapseNodeVec, it->nodes[0])) {
+      collapseNode = it->nodes[0];
+      otherNode = it->nodes[1];
+    }
+    else if(item_exists(collapseNodeVec, it->nodes[1])){
+      collapseNode = it->nodes[1];
+      otherNode = it->nodes[0];
+    }
+    else
+      assert(0); //cannot go here.
+    h_outCxx << str_format("  if (collapseNode_{}) \n", collapseNode);
+    h_outCxx << str_format("    collapsedNodes.push_back(IntPair(cogendaNodeID_{},cogendaNodeID_{}));\n",
+        collapseNode,otherNode);
+  }
+    
   INSERT_EMPTY_LINE(h_outCxx);
   
   // Now generate the jacstamp from what we already have.
@@ -1374,6 +1412,19 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "  }\n";
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
+
+  //add function to handle collapsing of nodes
+  h_outCxx << "  void Instance::collapseNodes() {\n";
+  for(auto it=vaModuleEntries.m_collapedNodes.begin(); 
+      it != vaModuleEntries.m_collapedNodes.end(); ++it) {
+    h_outCxx << str_format("  collapseNode_{} = false;\n",it->first);
+    h_outCxx << str_format("  if ({}) \n", it->second);
+    h_outCxx << str_format("    collapseNode_{} = true;\n",it->first);
+    
+    h_outCxx << str_format("  if (collapseNode_{})\n",it->first);
+    h_outCxx << "    numIntVars--;\n";
+  }
+  h_outCxx << "}\n";
 
   h_outCxx << "  Instance::~Instance(){}\n";
   INSERT_EMPTY_LINE(h_outCxx);
@@ -1425,7 +1476,12 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   {
     if(item_exists(vaModuleEntries.m_modulePorts,*it))
         continue;
-    h_outCxx << str_format("  addInternalNode(symbol_table, li_{}, getName(), \"{}\");", *it, *it) <<std::endl;        
+    if(item_exists(collapseNodeVec, *it)) {
+        h_outCxx << str_format("  if (!collapseNode_{})", *it) <<std::endl;
+        h_outCxx << str_format("    addInternalNode(symbol_table, li_{}, getName(), \"{}\");", *it, *it) <<std::endl;
+    }
+    else
+        h_outCxx << str_format("  addInternalNode(symbol_table, li_{}, getName(), \"{}\");", *it, *it) <<std::endl;        
   }
   for(auto it=vaModuleEntries.m_branchLIDs.begin(); it != vaModuleEntries.m_branchLIDs.end(); ++it)
   {
@@ -1892,9 +1948,11 @@ CgenImplement (vaElement& vaModuleEntries, string_t& fCxxName)
   h_outCxx <<"namespace Xyce {" << std::endl;
   h_outCxx <<"namespace Device {" << std::endl;
   h_outCxx << str_format("namespace COGENDA{} {", moduleName) << std::endl;
-  h_outCxx <<"JacobianStamp Instance::jacStamp;" << std::endl;
-  h_outCxx <<"IdVector Instance::nodeMap;" << std::endl;
-  h_outCxx <<"PairMap Instance::pairToJacStampMap;" << std::endl;
+  if(vaModuleEntries.m_collapedNodes.size() == 0) {
+    h_outCxx <<"JacobianStamp Instance::jacStamp;" << std::endl;
+    h_outCxx <<"IdVector Instance::nodeMap;" << std::endl;
+    h_outCxx <<"PairMap Instance::pairToJacStampMap;" << std::endl;
+  }
   INSERT_EMPTY_LINE(h_outCxx);
 
   for(auto it=vaModuleEntries.m_moduleNets.begin(); 

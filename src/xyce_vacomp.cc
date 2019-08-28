@@ -701,6 +701,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   string_t strCond="", strCondElseIf="";
   vpiHandle objCond = vpi_handle(vpiCondition, obj);
   strCond = vpi_resolve_expr_impl (objCond, vaSpecialItems);
+  int lineNo = (int) vpi_get (vpiLineNo, obj);
   if(vaSpecialItems.m_isSrcLinesElseIf>0)
   {
     g_indent_width -= INDENT_UNIT;
@@ -714,6 +715,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   retStr += strCond;
   retStr += ") {\n";
   vpiHandle objIf_body = vpi_handle(vpiStmt, obj);
+  vaSpecialItems.m_condCollapedContribs[strCond].push_back(std::to_string(lineNo));
   if(objIf_body)
   {
     //retStr += "\n";
@@ -732,6 +734,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   if(objCondElseIf)
   {
     int _obj_type = (int) vpi_get (vpiType, objCondElseIf);
+    lineNo = (int) vpi_get (vpiLineNo, objCondElseIf);
     if(_obj_type == vpiIfElse)
       vaSpecialItems.m_isSrcLinesElseIf += 1;
     else if (_obj_type == vpiBegin && vaSpecialItems.m_isSrcLinesElseIf>0)
@@ -739,6 +742,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     if(_obj_type != vpiIfElse)
       g_indent_width += INDENT_UNIT;
     strCondElseIf = vpi_resolve_expr_impl (objCondElseIf, vaSpecialItems);
+    vaSpecialItems.m_condCollapedContribs[str_format("!({})",strCond)].push_back(std::to_string(lineNo));
     if(_obj_type != vpiIfElse)
       g_indent_width -= INDENT_UNIT;
     if(_obj_type == vpiIfElse)
@@ -1100,7 +1104,21 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   string_t _strType = (char *) vpi_get_str (vpiName, objLhs);
   //std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   str_toupper(_strType);
-  if(_strType == va_electrical_type_map[VA_Potential])
+  bool hasCollapsedNode = false;
+  string_t condition_collapse ="";
+  int rhs_obj_type = (int) vpi_get (vpiType, objRhs);
+  if(rhs_obj_type == vpiConstant && ::atoi(_strRhs.c_str()) == 0) {
+    int maxLineNo = -1;
+    hasCollapsedNode = true;
+    for (sstrVecDict::iterator itMap = vaSpecialItems.m_condCollapedContribs.begin (); 
+      itMap != vaSpecialItems.m_condCollapedContribs.end (); ++itMap) {
+      if (::atoi(itMap->second.at(0).c_str()) > maxLineNo) {
+        maxLineNo = ::atoi(itMap->second.at(0).c_str());
+        condition_collapse = itMap->first;
+      }
+    }
+  }
+  else if(_strType == va_electrical_type_map[VA_Potential])
     _etype = VA_Potential;
   else if(_strType == va_electrical_type_map[VA_Flow])
     _etype = VA_Flow;
@@ -1147,7 +1165,14 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
     _contrib.contrib_lhs=_strLhs;
     _contrib.contrib_rhs=_strRhs;
     _contrib.nodes = nodes;
-    _contrib.rhs_etype = VA_Static;
+    if(hasCollapsedNode) {
+      _contrib.rhs_etype = VA_ZERO;
+      _contrib.condition_collapse = condition_collapse;
+      vaSpecialItems.m_contribs.push_back(_contrib);
+      return;
+    }
+    else
+      _contrib.rhs_etype = VA_Static;
     insert_depend_item(lineNo, _strLhs, objRhs, vaSpecialItems);
     _contrib.depend_nodes = vaSpecialItems.m_dependTargMap[_strLhs].back().dependNodes;
     _contrib.depend_Branchnodes = vaSpecialItems.m_dependTargMap[_strLhs].back().depend_Branchnodes;
@@ -1560,11 +1585,32 @@ vpi_resolve_srccode_impl (vpiHandle root, vaElement &vaSpecialItems)
   return 0;
 }
 
+void setCollapeNodes(vaElement& vaModuleEntries)
+{
+  for(auto it=vaModuleEntries.m_contribs.begin(); 
+    it != vaModuleEntries.m_contribs.end(); ++it) {
+    if(it->rhs_etype != VA_ZERO)
+      continue;
+    
+    string_t collapseNode="", otherNode="";
+    if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[0])) {
+      collapseNode = it->nodes[0];
+    }
+    else if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[1])){
+      collapseNode = it->nodes[1];
+    }
+    else
+      assert(0); //cannot go here.
+    vaModuleEntries.m_collapedNodes.push_back(strPair(collapseNode,it->condition_collapse));
+  }
+}
+
 void
 vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
 {
   // process src lines
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
+  setCollapeNodes(vaSpecialEntries);
   if (!verbose)
     return;
   std::cout << "Info: Final C codes begin..........." << std::endl;
@@ -1630,7 +1676,6 @@ CxxGenFiles (vpiHandle root)
   if(retH > 1 || retC > 1)
     std::cout << "Info: Generate Xyce model code failed!" << std::endl;
 }
-
 
 
 

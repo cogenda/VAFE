@@ -158,6 +158,7 @@ typedef enum _vaElectricalType {
   VA_Capacitance,
   VA_Dynamic,
   VA_Static,
+  VA_ZERO,    //for zero rhs: v(a,b) <+ 0
 } vaElectricalType;
 
 typedef enum _vaState {
@@ -184,6 +185,7 @@ typedef struct _contribElement {
   int lineNo;
   string_t contrib_lhs;
   string_t contrib_rhs;
+  string_t condition_collapse; //if(condition_collapse) v(a,b)<+0
   strVec nodes;         //a,c for I(a,c) <+ v(a,c)*2 + v(b,c)
   //rhs dependent voltage node pair
   strPairVec depend_nodes;  //[{a,b},{b,c}] for above contrib
@@ -218,8 +220,8 @@ typedef struct _vaElement {
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
   strVec m_resolvedAnaFunCcodes;    
-  strVec m_modulePorts;    
-  strVec m_moduleNets;    
+  strVec m_modulePorts;   //Port or external node 
+  strVec m_moduleNets;    //all nodes: port + internal nodes
   string_t m_moduleArgDef;
   strVec m_analogFuncNames;
   std::vector < contribElement > m_contribs;
@@ -227,6 +229,10 @@ typedef struct _vaElement {
   sstrPairVecDict m_probeConstants;
   //temp stored rhs branch nodes infor stored for BRA item resolution
   strPairVec m_nodeContainer; 
+  //temp stored conditon for collapsed contrib items
+  sstrVecDict m_condCollapedContribs;
+  //internal nodes may be collaped under some conditions,[(nodeA,condA),...]
+  strPairVec m_collapedNodes;
   string_t m_moduleName;
   //current handling va code scope 
   vaState current_scope;  
