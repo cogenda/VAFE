@@ -1087,7 +1087,8 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       ivec != _codeVec->end (); ++ivec)
   {
     if(ivec == _codeVec->begin ())
-      h_outCxx << "if (getSolverState().dcopFlag) {";
+      //This initial block is needed for DC/Tran and not only for DC/OP
+      h_outCxx << "if (true || getSolverState().dcopFlag) {";
     h_outCxx << *ivec;
     if((*ivec)[(*ivec).size()-1] != '\n') {
       h_outCxx << std::endl;
