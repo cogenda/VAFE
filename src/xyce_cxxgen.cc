@@ -171,10 +171,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    bool loadDAEdQdx ();"             <<std::endl;
   h_outheader << "    bool loadDAEdFdx ();"             <<std::endl;
   
-  if(n_collapsible > 0)
-  {
-    h_outheader << "    void collapseNodes();" <<std::endl;
-  }
+  h_outheader << "    void collapseNodes();" <<std::endl;
 
   INSERT_EMPTY_LINE(h_outheader);
   if(IGNORE_NOISE != 1)
