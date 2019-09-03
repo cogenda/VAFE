@@ -1,0 +1,26 @@
+// $Revision: #2 $ $DateTime: 2006/02/12 18:25:55 $ $Author: kerns $
+// Simple charge conserving device with function
+
+module nodecollap(a, c);
+   inout a, c;
+   electrical a,a1,c;
+   parameter real A=1e-12 from [0:inf);
+   parameter integer Q=1;
+
+   parameter real R=1000k;
+   parameter real a0=0.1;
+   parameter real a2=0.01;
+
+   analog begin
+      if (R < 1e-2) begin
+        V(a,a1) <+ 0.0;
+        I(a,c) <+ V(a,c) / R * (1.0 + a0 * V(a,c) * V(a,c) + a2 * V(a,c) * V(a,c) * V(a,c)) ;
+      end
+      else begin
+        V(a,a1) <+ I(a,a1)*R*2;
+        I(a1,c) <+ V(a1,c) / R*2 ;
+      end
+
+   end
+endmodule
+
