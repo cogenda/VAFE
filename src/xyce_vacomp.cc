@@ -630,7 +630,7 @@ resolve_block_for(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 void
 resolve_block_case(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
 {
-  /* case strunct in vams AST
+  /* case struct in vams AST
   obj  vpiCondition
   itr  vpiCaseItem[n] size=n
     obj CaseItem[i]
@@ -715,7 +715,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
   retStr += strCond;
   retStr += ") {\n";
   vpiHandle objIf_body = vpi_handle(vpiStmt, obj);
-  vaSpecialItems.m_condCollapedContribs[strCond].push_back(std::to_string(lineNo));
+  vaSpecialItems.m_condCollapedContribs = strPair(strCond,std::to_string(lineNo));
   if(objIf_body)
   {
     //retStr += "\n";
@@ -742,7 +742,7 @@ resolve_block_ifelse(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems)
     if(_obj_type != vpiIfElse)
       g_indent_width += INDENT_UNIT;
     strCondElseIf = vpi_resolve_expr_impl (objCondElseIf, vaSpecialItems);
-    vaSpecialItems.m_condCollapedContribs[str_format("!({})",strCond)].push_back(std::to_string(lineNo));
+    vaSpecialItems.m_condCollapedContribs = strPair(str_format("!({})",strCond),std::to_string(lineNo));
     if(_obj_type != vpiIfElse)
       g_indent_width -= INDENT_UNIT;
     if(_obj_type == vpiIfElse)
@@ -1105,18 +1105,15 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   //std::transform(_strType.begin(), _strType.end(), _strType.begin(), toupper);
   str_toupper(_strType);
   bool hasCollapsedNode = false;
+  bool hasSmallSignalFunc = false;
   string_t condition_collapse ="";
   int rhs_obj_type = (int) vpi_get (vpiType, objRhs);
   if(rhs_obj_type == vpiConstant && ::atoi(_strRhs.c_str()) == 0) {
-    int maxLineNo = -1;
     hasCollapsedNode = true;
-    for (sstrVecDict::iterator itMap = vaSpecialItems.m_condCollapedContribs.begin (); 
-      itMap != vaSpecialItems.m_condCollapedContribs.end (); ++itMap) {
-      if (::atoi(itMap->second.at(0).c_str()) > maxLineNo) {
-        maxLineNo = ::atoi(itMap->second.at(0).c_str());
-        condition_collapse = itMap->first;
-      }
-    }
+    strPair *thisPair = &(vaSpecialItems.m_condCollapedContribs);
+    assert(::atoi(thisPair->second.c_str()) <= lineNo);
+    condition_collapse = thisPair->first;
+    _strRhs = COLLAPSECONTRIB_TAG;
   }
   else if(_strType == va_electrical_type_map[VA_Potential])
     _etype = VA_Potential;
@@ -1155,10 +1152,10 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   if(!vaSpecialItems.objPended)
   {
     string_t _strLhs = _strType + "contrib_" + concat_vector2string(nodes, "_");
-    string_t _keytemp = "vpiAnalogSmallSignalFuncCall", _extrComment="";
-    if(str_replace_key(_strRhs, _keytemp, "0.0"))
-      _extrComment = "//smallSignalFuncCall ignored here.";
-    retStr = str_format("{}+={}; {}",_strLhs,_strRhs,_extrComment);
+    string_t _keytemp = "vpiAnalogSmallSignalFuncCall";
+    if(str_replace_key(_strRhs, _keytemp, SMALLSIGNALCONTRIB_TAG))
+      hasSmallSignalFunc = true;
+    retStr = str_format("{}+={};",_strLhs,_strRhs);
     retStr.insert(0, g_indent_width, ' ');
     _contrib.etype = _etype;
     _contrib.lineNo = lineNo;
@@ -1169,6 +1166,11 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
       _contrib.rhs_etype = VA_ZERO;
       _contrib.condition_collapse = condition_collapse;
       vaSpecialItems.m_contribs.push_back(_contrib);
+      return;
+    }
+    else if(hasSmallSignalFunc) {  //avoid to gen BRA items for noise functions, so ignore this contrib item
+      //_contrib.rhs_etype = VA_AnalogSmallSignal;
+      //vaSpecialItems.m_contribs.push_back(_contrib);
       return;
     }
     else
@@ -1338,6 +1340,12 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             resolve_block_ifelse(obj, _retStr, vaSpecialItems);
             vaSpecialItems.m_needMergDependItem = false;
             vaSpecialItems.lineNo_ifelse_case = UNDEF;
+            //std::cout << "***IFELSE-Out: " << _retStr << std::endl;
+            //if the _retStr contains COLLAPSECONTRIB_TAG then insert to 
+            //m_resolvedIfCaseNodCollapCcodes
+            if(_retStr.find(COLLAPSECONTRIB_TAG) != string_t::npos) {
+              vaSpecialItems.m_resolvedIfCaseNodCollapCcodes.push_back(_retStr);
+            }
           }
           else if(cur_obj_type == vpiBegin)
           {
@@ -1428,6 +1436,10 @@ vpi_resolve_expr_impl (vpiHandle obj, vaElement &vaSpecialItems)
             resolve_block_case(obj, _retStr, vaSpecialItems);
             vaSpecialItems.m_needMergDependItem = false;
             vaSpecialItems.lineNo_ifelse_case = UNDEF;
+            //if the _retStr contains COLLAPSECONTRIB_TAG then insert to 
+            //m_resolvedIfCaseNodCollapCcodes
+            if(_retStr.find(COLLAPSECONTRIB_TAG) != string_t::npos) 
+              vaSpecialItems.m_resolvedIfCaseNodCollapCcodes.push_back(_retStr);
           }
           else if(cur_obj_type == vpiCondition)
           {
@@ -1593,7 +1605,12 @@ void setCollapeNodes(vaElement& vaModuleEntries)
       continue;
     
     string_t collapseNode="", otherNode="";
-    if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[0])) {
+    //If both are internal nodes, take the latter one 
+    if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[0]) && 
+       !item_exists(vaModuleEntries.m_modulePorts, it->nodes[1])) {
+      collapseNode = it->nodes[1];
+    }
+    else if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[0])) {
       collapseNode = it->nodes[0];
     }
     else if(!item_exists(vaModuleEntries.m_modulePorts, it->nodes[1])){
@@ -1601,7 +1618,9 @@ void setCollapeNodes(vaElement& vaModuleEntries)
     }
     else
       assert(0); //cannot go here.
-    vaModuleEntries.m_collapedNodes.push_back(strPair(collapseNode,it->condition_collapse));
+    strPair _collapseInfo(collapseNode,it->condition_collapse);
+    if(!item_exists(vaModuleEntries.m_collapedNodes, _collapseInfo))
+      vaModuleEntries.m_collapedNodes.push_back(_collapseInfo);
   }
 }
 

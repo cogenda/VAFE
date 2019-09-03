@@ -158,6 +158,7 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "    void registerBranchDataLIDs(const std::vector<int> & branchLIDVecRef);" <<std::endl;
   INSERT_EMPTY_LINE(h_outheader);
   h_outheader << "    bool processParams();" <<std::endl;
+  h_outheader << "    void initInternalVars();" <<std::endl;
   h_outheader << "    bool updateTemperature ( const double & temp = -999.0 );" <<std::endl;
   h_outheader << "    bool updateIntermediateVars ();"  <<std::endl;
   h_outheader << "    bool updatePrimaryState ();"      <<std::endl;
@@ -476,6 +477,29 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
     h_outheader << str_format("    {} {};", it->second.val_type, it->first) <<std::endl;
   }
 
+  //Tips: move the local vars in Instance evaluation function to header to make them global 
+  //for all Instance member function (needed by Instance::collapseNodes())
+  h_outheader << "  // Local variables extend to global vars in Instance \n";
+  //lookup the module variables in depend map to determine if it needs CogendaFadType
+  for(auto imap=vaModuleEntries.m_moduleVars.begin(); imap != vaModuleEntries.m_moduleVars.end(); ++imap)
+  {
+    for(auto ivec=imap->second.begin(); ivec != imap->second.end(); ++ivec)
+    {
+      string_t varType = imap->first;
+      string_t varExpr = *ivec;
+      string_t varName = str_split(varExpr, '=', ' ')[0];
+      bool isFadType = false; 
+      if(key_exists(vaModuleEntries.m_dependTargMap, varName) && varType == "double")
+      {
+        if(has_depend_nodes(varName, vaModuleEntries.m_dependTargMap[varName]))
+          isFadType = true;
+      }
+      if(isFadType)
+        h_outheader << str_format("  {} {};", ADVAR_TYPE,varExpr) << std::endl;
+      else
+        h_outheader << str_format("  {} {};", varType, varExpr) << std::endl;
+    }
+  }  
   INSERT_EMPTY_LINE(h_outheader);
 
   if(n_collapsible == 0)
@@ -554,6 +578,7 @@ CgenHeaderClassModel(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   {
     h_outheader << str_format("    {} {};", it->second.val_type, it->first) <<std::endl;
   }
+
   h_outheader << "};" <<std::endl;
 }
 
@@ -1015,27 +1040,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   h_outCxx << "  bool bsuccess=true;\n";
   h_outCxx << "  Linear::Vector * solVectorPtr = extData.nextSolVectorPtr;\n";
 
-  h_outCxx << "  // Local variables\n";
-  //lookup the module variables in depend map to determine if it needs CogendaFadType
-  for(auto imap=vaModuleEntries.m_moduleVars.begin(); imap != vaModuleEntries.m_moduleVars.end(); ++imap)
-  {
-    for(auto ivec=imap->second.begin(); ivec != imap->second.end(); ++ivec)
-    {
-      string_t varType = imap->first;
-      string_t varExpr = *ivec;
-      string_t varName = str_split(varExpr, '=', ' ')[0];
-      bool isFadType = false; 
-      if(key_exists(vaModuleEntries.m_dependTargMap, varName) && varType == "double")
-      {
-        if(has_depend_nodes(varName, vaModuleEntries.m_dependTargMap[varName]))
-          isFadType = true;
-      }
-      if(isFadType)
-        h_outCxx << str_format("  {} {};", ADVAR_TYPE,varExpr) << std::endl;
-      else
-        h_outCxx << str_format("  {} {};", varType, varExpr) << std::endl;
-    }
-  }
+
   int n_probeVars = vaModuleEntries.m_probeConstants["V"].size() + vaModuleEntries.m_probeConstants["I"].size();
   int n_probeNodes=vaModuleEntries.m_moduleNets.size();
   h_outCxx << "  // set the sizes of the Fad arrays:\n";
@@ -1086,7 +1091,9 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
 
   // codes converted from analog begin...end block within the module
   // first for @(initial_step), then main module code
+  // removed from here to Instance::initInternalVars() and make sure call it only once.
   strVec *_codeVec = &vaModuleEntries.m_resolvedInitStepCcodes;
+#if 0
   for (strVec::iterator ivec = _codeVec->begin (); 
       ivec != _codeVec->end (); ++ivec)
   {
@@ -1101,6 +1108,7 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
       h_outCxx << "}" <<std::endl;
   }
   INSERT_EMPTY_LINE(h_outCxx);
+#endif /*0*/
 
   _codeVec = &vaModuleEntries.m_resolvedCcodes;
   strVec strAdditionalStampBranch;
@@ -1174,6 +1182,10 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         if(line_splits[0][0] == 'I')
         {
           h_outCxx << "//I-contrib..." << std::endl;
+          if(rhsExpr.substr(0,rhsExpr.size()-1) == SMALLSIGNALCONTRIB_TAG) {
+            h_outCxx << str_format("//{}\n",rhsExpr);
+            continue;
+          }          
           h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] += {}\n",str_nspace,nodPos, rhsExpr);
           if(_strVec.size() >= 3 && nodNeg != GND)
             h_outCxx << str_format("{}staticContributions[cogendaNodeID_{}] -= {}\n",str_nspace,nodNeg, rhsExpr);
@@ -1190,10 +1202,15 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
         else if(line_splits[0][0] == 'V')
         {
           h_outCxx << "//V-contrib..." << std::endl;
-          if(::atoi(rhsExpr.c_str()) == 0) {
-            h_outCxx << "; //do nothing for collapsed node.\n";
+          if(rhsExpr.substr(0,rhsExpr.size()-1) == COLLAPSECONTRIB_TAG) {
+            h_outCxx << str_format("//{}\n",COLLAPSECONTRIB_TAG);
             continue;
           }
+          if(rhsExpr.substr(0,rhsExpr.size()-1) == SMALLSIGNALCONTRIB_TAG) {
+            h_outCxx << str_format("//{}\n",rhsExpr);
+            continue;
+          }
+
           if(isFoundContrib && thisContrib.rhs_etype == VA_Dynamic)
             h_outCxx << str_format("{}dynamicContributions[cogendaBRA_ID_{}_{}] += {}\n",str_nspace,nodPos, nodNeg, rhsExpr);
           else
@@ -1286,6 +1303,53 @@ void genModelEvalBody(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strin
   h_outCxx << "}\n";
 }
 
+//generate Instance::collapseNodes() codes from vaModuleEntries.m_resolvedIfCaseNodCollapCcodes
+void gen_collapseNodes(vaElement& vaModuleEntries, std::ofstream& h_outCxx, strVec& collapseNodeVec)
+{
+  string_t retStr,nodPos, nodNeg, collapseNode, contribKey;
+  strVec lines;
+  h_outCxx << "  void Instance::collapseNodes() {\n";
+  for(auto it=collapseNodeVec.begin(); it != collapseNodeVec.end(); ++it) {
+    h_outCxx << str_format("  collapseNode_{} = false;\n",*it);
+  }
+  for(auto it=vaModuleEntries.m_resolvedIfCaseNodCollapCcodes.begin(); 
+      it != vaModuleEntries.m_resolvedIfCaseNodCollapCcodes.end(); ++it) {
+    lines = str_split(*it, '\n', '\n');
+    for(unsigned int idx=0; idx < lines.size(); idx++) {
+      retStr = str_strip(lines[idx], " ", 0);  //strip space chat at the both sides
+      if(str_startswith(retStr, "if") || str_startswith(retStr, "else") || str_startswith(retStr, "case")
+          || str_startswith(retStr, "default") || str_startswith(retStr, "break") 
+          || str_startswith(retStr, "switch")  || retStr=="{" || retStr=="}")
+        h_outCxx << retStr <<std::endl;
+      else if (str_startswith(retStr, "Vcontrib") || str_startswith(retStr, "Icontrib")) {
+        //only handle node collapse tag, ignore others
+        if(retStr.find(COLLAPSECONTRIB_TAG) != string_t::npos) { 
+          //just process item like: 'Vcontrib_b_dbulk+=ZERO_For_Collapsed_Node;'
+          contribKey = str_split(retStr, '=', ' ')[0];
+          if(contribKey.back() == '+' || contribKey.back() == '-')
+            str_remove_tail(contribKey, 1);
+          strVec strVec = str_split(contribKey, '_', ' ');
+          assert(strVec.size() >= 3);
+          nodPos = strVec[1];
+          nodNeg = strVec[2];
+          //If both are collapsed nodes, take the latter one 
+          if(item_exists(collapseNodeVec, nodPos) && item_exists(collapseNodeVec, nodNeg))
+            collapseNode = nodNeg;
+          else if(item_exists(collapseNodeVec, nodPos)) 
+            collapseNode = nodPos;
+          else if(item_exists(collapseNodeVec, nodNeg)) 
+            collapseNode = nodNeg;
+          else
+            assert(0);
+          h_outCxx << str_format("  collapseNode_{} = true;\n",collapseNode);
+          h_outCxx << "  numIntVars--;\n";
+        }
+      }
+    }
+  }
+  h_outCxx << "}\n";
+}
+
 void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
 {
   int _idx = 0;
@@ -1365,22 +1429,32 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   
     // calculate dependent (i.e. computed params) and check for errors.
   h_outCxx << "  processParams();\n";
+    // initialize internal vars in @initial_step
+  h_outCxx << "  initInternalVars();\n";
   INSERT_EMPTY_LINE(h_outCxx);
   
   h_outCxx << "  PairVector collapsedNodes;\n";
   h_outCxx << "  collapseNodes();\n";
   string_t collapseNode="", otherNode="";
   strVec collapseNodeVec;
+  strPairVec collapseNodePairs;
+  for(auto itcoll=vaModuleEntries.m_collapedNodes.begin();
+      itcoll != vaModuleEntries.m_collapedNodes.end(); ++itcoll) {
+    //The first is the collapsed node
+    collapseNodeVec.push_back(itcoll->first);
+  }
   for(auto it=vaModuleEntries.m_contribs.begin(); 
     it != vaModuleEntries.m_contribs.end(); ++it) {
     if (it->rhs_etype != VA_ZERO)
       continue;
-    for(auto itcoll=vaModuleEntries.m_collapedNodes.begin();
-        itcoll != vaModuleEntries.m_collapedNodes.end(); ++itcoll) {
-      collapseNodeVec.push_back(itcoll->first);
-    }
 
-    if(item_exists(collapseNodeVec, it->nodes[0])) {
+    //If both are collapse nodes, take the latter one 
+    if(item_exists(collapseNodeVec, it->nodes[0]) && 
+       item_exists(collapseNodeVec, it->nodes[1]) ) {
+      collapseNode = it->nodes[1];
+      otherNode = it->nodes[0];
+    }
+    else if(item_exists(collapseNodeVec, it->nodes[0])) {
       collapseNode = it->nodes[0];
       otherNode = it->nodes[1];
     }
@@ -1390,9 +1464,14 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     }
     else
       assert(0); //cannot go here.
-    h_outCxx << str_format("  if (collapseNode_{}) \n", collapseNode);
-    h_outCxx << str_format("    collapsedNodes.push_back(IntPair(cogendaNodeID_{},cogendaNodeID_{}));\n",
-        collapseNode,otherNode);
+
+    //To avoid duplicated pair item
+    if(!item_exists(collapseNodePairs, strPair(collapseNode,otherNode))) {
+      h_outCxx << str_format("  if (collapseNode_{}) \n", collapseNode);
+      h_outCxx << str_format("    collapsedNodes.push_back(IntPair(cogendaNodeID_{},cogendaNodeID_{}));\n",
+          collapseNode,otherNode);
+      collapseNodePairs.push_back(strPair(collapseNode,otherNode));
+    }
   }
     
   INSERT_EMPTY_LINE(h_outCxx);
@@ -1411,17 +1490,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
 
   //add function to handle collapsing of nodes
-  h_outCxx << "  void Instance::collapseNodes() {\n";
-  for(auto it=vaModuleEntries.m_collapedNodes.begin(); 
-      it != vaModuleEntries.m_collapedNodes.end(); ++it) {
-    h_outCxx << str_format("  collapseNode_{} = false;\n",it->first);
-    h_outCxx << str_format("  if ({}) \n", it->second);
-    h_outCxx << str_format("    collapseNode_{} = true;\n",it->first);
-    
-    h_outCxx << str_format("  if (collapseNode_{})\n",it->first);
-    h_outCxx << "    numIntVars--;\n";
-  }
-  h_outCxx << "}\n";
+  gen_collapseNodes(vaModuleEntries, h_outCxx, collapseNodeVec);
+  INSERT_EMPTY_LINE(h_outCxx);
 
   h_outCxx << "  Instance::~Instance(){}\n";
   INSERT_EMPTY_LINE(h_outCxx);
@@ -1464,6 +1534,26 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   }  
   h_outCxx << "}\n";
   INSERT_EMPTY_LINE(h_outCxx);
+
+  h_outCxx << "  //void Instance::initInternalVars\n";
+  h_outCxx << "void Instance::initInternalVars() {\n";
+  strVec *_codeVec = &vaModuleEntries.m_resolvedInitStepCcodes;
+  for (strVec::iterator ivec = _codeVec->begin (); 
+      ivec != _codeVec->end (); ++ivec)
+  {
+    if(ivec == _codeVec->begin ())
+      //This initial block is needed for DC/Tran and not only for DC/OP
+      //h_outCxx << "if (true || getSolverState().dcopFlag) {";
+    h_outCxx << *ivec;
+    if((*ivec)[(*ivec).size()-1] != '\n') {
+      h_outCxx << std::endl;
+    }
+    //if(*ivec == _codeVec->back ())
+    //  h_outCxx << "}" <<std::endl;
+  }
+  h_outCxx << "}" <<std::endl;
+  INSERT_EMPTY_LINE(h_outCxx);
+
 
   h_outCxx << "  //void Instance::loadNodeSymbols\n";
   h_outCxx << "void Instance::loadNodeSymbols(Util::SymbolTable &symbol_table) const\n";

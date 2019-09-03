@@ -27,6 +27,8 @@
 //#define MODEL_DOT "model_."
 #define TEMPLATE_TYPE "GenericT"
 #define ADVAR_TYPE "CogendaFadType"
+#define COLLAPSECONTRIB_TAG "ZERO_For_Collapsed_Node"
+#define SMALLSIGNALCONTRIB_TAG "ZERO_For_Small_Signal_Node"
 
 struct _dependTargInfo;
 struct _valueRange;
@@ -159,6 +161,7 @@ typedef enum _vaElectricalType {
   VA_Dynamic,
   VA_Static,
   VA_ZERO,    //for zero rhs: v(a,b) <+ 0
+  VA_AnalogSmallSignal, //for noise etc
 } vaElectricalType;
 
 typedef enum _vaState {
@@ -220,6 +223,8 @@ typedef struct _vaElement {
   strVec m_resolvedInitStepCcodes;    
   strVec m_resolvedCcodes;    
   strVec m_resolvedAnaFunCcodes;    
+  //to store c-code which contains node collapse contribs
+  strVec m_resolvedIfCaseNodCollapCcodes;    
   strVec m_modulePorts;   //Port or external node 
   strVec m_moduleNets;    //all nodes: port + internal nodes
   string_t m_moduleArgDef;
@@ -230,7 +235,7 @@ typedef struct _vaElement {
   //temp stored rhs branch nodes infor stored for BRA item resolution
   strPairVec m_nodeContainer; 
   //temp stored conditon for collapsed contrib items
-  sstrVecDict m_condCollapedContribs;
+  strPair m_condCollapedContribs;
   //internal nodes may be collaped under some conditions,[(nodeA,condA),...]
   strPairVec m_collapedNodes;
   string_t m_moduleName;
