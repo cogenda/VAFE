@@ -378,9 +378,18 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   //xyceDeclareNodeConstants
   h_outheader << "    //Node Constants\n";
   int _idx=0;
+  //Tips: should be in the order: port first then internal nodes, or else Xyce gives wrong results
+  for(auto it=vaModuleEntries.m_modulePorts.begin(); 
+      it != vaModuleEntries.m_modulePorts.end(); ++it)
+  {
+    h_outheader << str_format("    static const int cogendaNodeID_{} = {};", *it, _idx) <<std::endl;
+    _idx += 1;
+  }  
   for(auto it=vaModuleEntries.m_moduleNets.begin(); 
       it != vaModuleEntries.m_moduleNets.end(); ++it)
   {
+    if(item_exists(vaModuleEntries.m_modulePorts, *it))
+      continue;
     h_outheader << str_format("    static const int cogendaNodeID_{} = {};", *it, _idx) <<std::endl;
     _idx += 1;
   }
