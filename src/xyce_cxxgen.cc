@@ -1428,7 +1428,7 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   INSERT_EMPTY_LINE(h_outCxx);
   
     // Real bogosity here...
-  h_outCxx << "  if (!given(\"XYCE_COGENDA_INST_TEMP\"))\n";
+  h_outCxx << "  if (!given(\"XYCEADMSINSTTEMP\"))\n";
   h_outCxx << "    cogendaInstTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
   INSERT_EMPTY_LINE(h_outCxx);
   
@@ -1880,7 +1880,7 @@ genModelConstructor(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   // Set params according to .model line and constant defaults from metadata:
   h_outCxx << "  setModParams(model_block.params);\n";
 
-  h_outCxx << "  if (!given(\"XYCE_COGENDA_MOD_TEMP\"))\n";
+  h_outCxx << "  if (!given(\"XYCEADMSMODTEMP\"))\n";
   h_outCxx << "    cogendaModTemp=getDeviceOptions().temp.getImmutableValue<double>();\n";
 
   // Calculate any parameters specified as expressions:
@@ -1999,7 +1999,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx, bool putAtT
   h_outCxx <<"  // This kludge is to force us always to have an instance parameter\n";
   h_outCxx <<"  // that the device manager can set to the temperature, even if we have\n";
   h_outCxx <<"  // no \"TEMP\".\n";
-  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_INST_TEMP\", 0.0, &COGENDA{}::Instance::cogendaInstTemp)",moduleName)<<std::endl;
+  h_outCxx <<str_format("  p.addPar(\"XYCEADMSINSTTEMP\", 0.0, &COGENDA{}::Instance::cogendaInstTemp)",moduleName)<<std::endl;
   h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
   h_outCxx <<"    .setUnit(U_DEGK)\n";
   h_outCxx <<"    .setCategory(CAT_TEMP)\n";
@@ -2014,7 +2014,7 @@ genDeviceTraits(vaElement& vaModuleEntries, std::ofstream& h_outCxx, bool putAtT
   h_outCxx <<"  //void Traits::loadModelParameters()\n";
   h_outCxx <<str_format("void Traits::loadModelParameters(ParametricData<COGENDA{}::Model> &p)",moduleName)<<std::endl;
   h_outCxx <<"{\n";
-  h_outCxx <<str_format("  p.addPar(\"XYCE_COGENDA_MOD_TEMP\", 0.0, &COGENDA{}::Model::cogendaModTemp)",moduleName)<<std::endl;
+  h_outCxx <<str_format("  p.addPar(\"XYCEADMSMODTEMP\", 0.0, &COGENDA{}::Model::cogendaModTemp)",moduleName)<<std::endl;
   h_outCxx <<"    .setExpressionAccess(NO_DOC)\n";
   h_outCxx <<"    .setUnit(U_DEGK)\n";
   h_outCxx <<"    .setCategory(CAT_TEMP)\n";
