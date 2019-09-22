@@ -28,6 +28,7 @@ sstrDict va_c_expr_map = {
   {"$vt",      "_VT_"},
   {"$temperature", "_TEMPER_"},
   {"$limexp",  "_LIMEXP_"},
+  {"limexp",   "_LIMEXP_"},
   {"$realtime","_CURRTIME_"}, 
   {"$realtime","_CURRTIME_"}, 
   {"$abstime","_CURRTIME_"}, 
@@ -771,7 +772,7 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
   string_t _strName = (char *) vpi_get_str (vpiName, obj);
   //std::transform(_strName.begin(), _strName.end(), _strName.begin(), toupper);
   str_toupper(_strName);
-  if(_strName == "DDT")  //Only process ddt
+  if(_strName == "DDT" || _strName == "LIMEXP")  //Only process ddt
   {
     //strip 'ddt' and resolve its arguments
     vpiHandle iterator = vpi_iterate (vpiArgument, obj);
@@ -789,6 +790,10 @@ resolve_block_analogFilterFunCall(vpiHandle obj, string_t& retStr, vaElement& va
     }
     //retStr = "0.0";
     //str_replace_key(retStr, "ddt", "");
+    if(_strName == "LIMEXP") {
+      str_replace_key(retStr, "limexp", va_c_expr_map["limexp"]);
+      return;
+    }
     retStr = str_format("({})",concat_vector2string(_args, ",")); 
   }
   else

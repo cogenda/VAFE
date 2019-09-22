@@ -105,7 +105,7 @@ void CgenIncludeFiles(string_t& devName, std::ofstream& h_outheader)
   h_outheader <<"#define P_CELSIUS0    273.15" <<std::endl;
   h_outheader <<"using std::max;" <<std::endl;
   h_outheader <<"using std::min;" <<std::endl;
-  h_outheader <<"#define ELEM          1.0e+20" <<std::endl;
+  h_outheader <<"#define ELIM          1.0e+20" <<std::endl;
   h_outheader <<"#define _VT0_(T) ((T) * KOVERQ)" <<std::endl;
   h_outheader <<"#define _VT_ cogenda_vt_nom" <<std::endl;
   h_outheader <<"#define _TEMPER_ cogendaTemperature" <<std::endl;
