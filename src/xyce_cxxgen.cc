@@ -1370,8 +1370,10 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     h_outCxx << str_format("    {} = model_.{};",it->first, it->first) <<std::endl;
     //special handling for Xyce since the CtoK conversion has been done by Xyce
     if(str_toupperC(it->first) == "TNOM") {
-      h_outCxx << str_format("  else",str_toupperC(it->first)) <<std::endl;
-      h_outCxx << str_format("    {} -= P_CELSIUS0;",it->first) <<std::endl;
+      h_outCxx << "  else" <<std::endl;
+      //Workaround: temperature sweep in xyce will pass C not K
+      h_outCxx << str_format("    if({} < -100 || {}>150)",it->first,it->first) <<std::endl;
+      h_outCxx << str_format("      {} -= P_CELSIUS0;",it->first) <<std::endl;
     }
   }
   h_outCxx << "  updateTemperature(cogendaInstTemp);\n";
@@ -1732,6 +1734,8 @@ void genInstMemberFunc(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
   h_outCxx << "bool Instance::updatePrimaryState()\n";
   h_outCxx << "{\n";
   h_outCxx << "  bool bsuccess = true;\n";
+  //Workaournd: add this call to update temperature during T sweep
+  h_outCxx << "  initInternalVars();\n";
   h_outCxx << "  bsuccess = updateIntermediateVars();\n";
   // if old DAE were implemented, we'd save dynamic contributions as state
   // here.
@@ -1823,7 +1827,9 @@ genModelProcessParams(vaElement& vaModuleEntries, std::ofstream& h_outCxx)
     h_outCxx << str_format("    {} = {};",it->first, it->second.init_value) <<std::endl;
     //special handling for Xyce since the CtoK conversion has been done by Xyce
     if(str_toupperC(it->first) == "TNOM") {
-      h_outCxx << str_format("  else",str_toupperC(it->first)) <<std::endl;
+      h_outCxx << "  else" <<std::endl;
+      //Workaround: temperature sweep in xyce will pass C not K
+      h_outCxx << str_format("    if({} < -100 || {}>150)",it->first,it->first) <<std::endl;
       h_outCxx << str_format("    {} -= P_CELSIUS0;",it->first) <<std::endl;
     }
     if(it->second.has_range)
