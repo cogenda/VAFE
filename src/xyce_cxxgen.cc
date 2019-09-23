@@ -722,6 +722,8 @@ void output_MultipleNodePair_GC_stemp(std::ofstream& h_outCxx,string_t& type,con
 {
   string_t outString="";
   string_t sign="",nlhsA, nlhsB, nrhsB;
+  if(!stampDict)
+    return;
   for (auto imap = stampDict->begin (); imap != stampDict->end (); ++imap)
   {
     nlhsA = imap->first.first;
