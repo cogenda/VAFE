@@ -695,11 +695,11 @@ void CgenIncludeFilesCxx(string_t& devName, std::ofstream& h_outCxx)
 }
 
 void output_MultipleNodePair_GC_stemp(std::ofstream& h_outCxx,string_t& type,const string_t& ptrKey,
-    strPairStrVecDict& stampDict, const string_t tagKey="NodeID")
+    strPairStrVecDict* stampDict, const string_t tagKey="NodeID")
 {
   string_t outString="";
   string_t sign="",nlhsA, nlhsB, nrhsB;
-  for (auto imap = stampDict.begin (); imap != stampDict.end (); ++imap)
+  for (auto imap = stampDict->begin (); imap != stampDict->end (); ++imap)
   {
     nlhsA = imap->first.first;
     nlhsB = imap->first.second;
@@ -1038,7 +1038,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
       }          
     }
   }      
-  output_MultipleNodePair_GC_stemp(h_outCxx,type,"Node",gStaticMatrix);
+  output_MultipleNodePair_GC_stemp(h_outCxx,type,"Node",pStaticMatrix);
 }
 
 //generate C-codes for VA module codes, model="model" for class Model "instance" for class Instance
