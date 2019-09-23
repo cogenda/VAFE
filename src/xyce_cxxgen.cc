@@ -606,6 +606,27 @@ CgenHeaderAnalogBlock(vaElement& vaModuleEntries, std::ofstream& h_outheader)
   h_outheader << "} //namespace AnalogFunctions"<< std::endl;
 }
 
+//generate equivalent c++ codes for '? x:y' expression
+void CgenHeaderTernaryOp(vaElement& vaModuleEntries, std::ofstream& h_outheader)
+{
+strVec tArgVec = {"const ArgIn  &ifTrue, const ArgIn  &ifFalse",
+                  "const ArgIn  &ifTrue, const double &ifFalse",
+                  "const double &ifTrue, const ArgIn  &ifFalse",
+                  "const double &ifTrue, const double &ifFalse"};
+for (strVec::iterator it = tArgVec.begin (); it != tArgVec.end (); ++it)  {
+  h_outheader << "template<typename ArgIn>\n";
+  h_outheader << str_format("static ArgIn cogenda_ternary_op(const bool cond,{}){\n", *it);
+  if (*it ==  tArgVec.at(0))
+    h_outheader << " if (cond)\n  return ifTrue;\n else\n  return ifFalse;\n}\n";
+  else if (*it == tArgVec.at(1))
+    h_outheader << " if (cond)\n  return ifTrue;\n else\n  return ArgIn(ifFalse);\n}\n";
+  else if (*it == tArgVec.at(2))
+    h_outheader << " if (cond)\n  return ArgIn(ifTrue);\n else\n  return ifFalse;\n}\n";
+  else if (*it == tArgVec.at(3))
+    h_outheader << " if (cond)\n  return ArgIn(ifTrue);\n else\n  return ArgIn(ifFalse);\n}\n";
+  }
+}
+
 returnFlag
 CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
 {
@@ -632,6 +653,8 @@ CgenHeader (vaElement& vaModuleEntries, string_t& fheaderName)
   h_outheader << "class Model;" << std::endl;
   h_outheader << "class Instance;" << std::endl;
   h_outheader << str_format("const {} UNITFAD={}(1.0);", ADVAR_TYPE,ADVAR_TYPE) << std::endl;
+  //generate codes for 'cond? x : y' since builtin class not support this operator
+  CgenHeaderTernaryOp(vaModuleEntries, h_outheader);
   h_outheader << std::endl;
 
   //struct DeviceTraits

@@ -983,7 +983,8 @@ resolve_block_operation(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
   int idx=0, size = vpi_get (vpiSize, iterator);
   int cnt = 1;
   int opType = (int) vpi_get (vpiOpType, obj);
-  if(size >1)
+  strVec ternaryArgs;
+  if(size >1 && opType != vpiConditionOp)
     retStr="(";
   for(idx=0; idx < size; idx++)
   {
@@ -994,8 +995,12 @@ resolve_block_operation(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
         retStr += "-";
       else if(opType == vpiNotOp)
         retStr += "!";
-      retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
-      retStr = str_strip(retStr, " ", 2);  //strip the right space chars
+      if(opType != vpiConditionOp) {
+        retStr += vpi_resolve_expr_impl (scan_handle, vaSpecialItems);
+        retStr = str_strip(retStr, " ", 2);  //strip the right space chars
+      }
+      else
+        ternaryArgs.push_back(str_strip(vpi_resolve_expr_impl (scan_handle, vaSpecialItems), " ", 2));
       if(idx != size-1) {
       //binary OPs
         if(opType == vpiAddOp)
@@ -1027,16 +1032,22 @@ resolve_block_operation(vpiHandle obj, string_t& retStr, vaElement& vaSpecialIte
         //ternary OPs
         else if(opType == vpiConditionOp)
         {
-          if(idx == 0)
-            retStr += " ? ";
-          else if(idx == 1)
-            retStr += " : ";
+          //Here do nothing since we have used function cogenda_ternary_op()
+          //to handle '? : ' operator
+          //if(idx == 0)
+          //  retStr += " ? ";
+          //else if(idx == 1)
+          //  retStr += " : ";
         }
       }
     }             
   }
-  if(size >1)
-    retStr += ")";  
+  if(size >1) {
+    if(opType != vpiConditionOp)
+      retStr += ")";  
+    else
+      retStr = str_format("cogenda_ternary_op<CogendaFadType>({})",concat_vector2string(ternaryArgs, ","));
+  }
 }
 
 //For assignment statment lhs=rhs
