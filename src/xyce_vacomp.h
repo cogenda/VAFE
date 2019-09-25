@@ -454,7 +454,8 @@ void set_map_iteration_by_name(vpiHandle obj, int iter_type, std::map<T1,T2>& co
         //TODO add more types
       case vpiRealVar:
       case vpiIntegerVar:
-        container[va_c_type_map[_type]].push_back(_retString);
+        if(!item_exists(container[va_c_type_map[_type]], _retString))
+          container[va_c_type_map[_type]].push_back(_retString);
         break;
       case vpiParameter:  //Useless codes, using the next `set_map_iteration_by_name
         {
