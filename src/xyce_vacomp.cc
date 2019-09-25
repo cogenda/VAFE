@@ -1646,6 +1646,24 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
   // process src lines
   vpi_resolve_srccode_impl(obj, vaSpecialEntries);
   setCollapeNodes(vaSpecialEntries);
+
+  //resolve reference parameter's value
+  paramDict *mpars = &(vaSpecialEntries.m_params);
+  for (paramDict::iterator it = mpars->begin (); it != mpars->end (); ++it)
+    {
+      string_t ref_par_name = it->second.init_value;
+      str_replace_key(ref_par_name, MODEL_DOT, "");
+      ref_par_name = str_strip(ref_par_name, " ");
+      if (mpars->find (ref_par_name) != mpars->end ())
+	{
+	  (*mpars)[it->first] = (*mpars)[ref_par_name];
+          if (verbose) {
+	    std::cout << "parameter: " << it-> first << " value : " << it->second.init_value
+                 << " (resolved from " << ref_par_name << ")" << std::endl;
+          }
+	}
+    }
+  
   if (!verbose)
     return;
   std::cout << "Info: Final C codes begin..........." << std::endl;
@@ -1664,29 +1682,17 @@ vpi_gen_ccode (vpiHandle obj, vaElement& vaSpecialEntries)
         std::cout << std::endl;
     }
   }
-  paramDict mpars = vaSpecialEntries.m_params;
-  for (paramDict::iterator it = mpars.begin (); it != mpars.end (); ++it)
+  for (paramDict::iterator it = mpars->begin (); it != mpars->end (); ++it)
     {
-      //resolve reference parameter's value
-      if (mpars.find (it->second.init_value) != mpars.end ())
-	{
-          string_t key = it->second.init_value;
-	  mpars[it->first] = mpars[key];
-	  std::cout << "parameter: " << it-> first << " value : " << it->second.init_value
-            << " (resolved from " << key << ")" << std::endl;
-	}
-      else
+      std::cout << "parameter: " << it->first << " value: " << it->second.init_value;
+      if(it->second.has_range)
       {
-        std::cout << "parameter: " << it->first << " value: " << it->second.init_value;
-        if(it->second.has_range)
-        {
-          string_t lower_Op = it->second.lower_Op == vpiGeOp ? "[" : "(";
-          string_t higher_Op = it->second.higher_Op == vpiLeOp ? "]" : ")";
-          std::cout << str_format(" with range {}",lower_Op) + it->second.lower_value + ":" + it->second.higher_value + higher_Op << std::endl;
-        }
-        else
-          std::cout << std::endl;
+        string_t lower_Op = it->second.lower_Op == vpiGeOp ? "[" : "(";
+        string_t higher_Op = it->second.higher_Op == vpiLeOp ? "]" : ")";
+        std::cout << str_format(" with range {}",lower_Op) + it->second.lower_value + ":" + it->second.higher_value + higher_Op << std::endl;
       }
+      else
+        std::cout << std::endl;
     }
   if(vaSpecialEntries.retFlag > 1)
     std::cout << "Info: VA compiling failed!" << std::endl;
