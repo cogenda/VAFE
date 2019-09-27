@@ -268,6 +268,8 @@ CgenHeaderClassInstance(vaElement& vaModuleEntries, std::ofstream& h_outheader)
         it->depend_nodes.push_back(nodePairLhs);
         it->isInsertedLhsNodes = true;
       }
+      else
+        it->isInsertedLhsNodes = false;
       for(int i=0; i<2; i++) {
         if( i== 0 )
           nodePair = {it->nodes.at(i), str_format("BRA_{}_{}",nodePairLhs.first,nodePairLhs.second)};
