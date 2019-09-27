@@ -1,8 +1,14 @@
-`include "std.va"
 `include "discipline.h"
 //
 `define EXP_THRESHOLD 1e34
 `define MIN_EXP 1e-29
+
+`define BSIM4RdsEndIso(Weffcj)\
+            $strobe("Warning: (instance %M) Specified RGEO=%d not matched (BSIM4RdsEndIso \
+                     type !=1)\n", rgeo);
+
+            //$strobe("Warning: (instance %M) Specified RGEO = %d not matched (BSIM4RdsEndIso)\n", \
+            //         Weffcj);
 module switchcase(a,c);
    electrical a, c;
    inout a, c;
@@ -49,6 +55,7 @@ module switchcase(a,c);
                             (vbs_jct - BSIM4vjsmRev);
                         BSIM4gbs = devbs_dvb * T2 + T1 * BSIM4SslpRev + _ckt_gmin;
                         BSIM4cbs = T1 * T2 + _ckt_gmin * vbs_jct;
+                        `BSIM4RdsEndIso(T2)
                     end          
                     else if (vbs_jct <= BSIM4vjsmFwd) begin
                         T0 = vbs_jct / Nvtms;
@@ -80,7 +87,8 @@ module switchcase(a,c);
                         end
                 end // case: 2
             default: begin
-                $strobe("This is a default case...");
+                $strobe("This is a default case with \
+                    BSIM4dioMod=%d\n",BSIM4dioMod);
                 end
             endcase // case(BSIM4dioMod)
    end

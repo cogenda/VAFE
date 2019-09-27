@@ -1,4 +1,6 @@
 //Test item:contribution stmt 
+`include "disciplines.vams"
+`include "constants.vams"
 
 module branches(anode, gate, cathode, nsat);
 	inout anode, gate, cathode, nsat;
@@ -7,8 +9,10 @@ module branches(anode, gate, cathode, nsat);
 	electrical dvdgdt, dvbcdt;
        
         branch (gate, cathode)	gate_cathode;	// define a branch
-        branch (drain, cathode) drain_cathode;
-        real qcgs,qcdsj,imult,imos,icdg,ibp,ic,rb,vebj,nsat1,mucinv1;
+        branch (drain, cathode) drain_cathode1;
+        real vdg,vgs,vds,vae,ved,qcgs,qcdsj,imult,imos,icdg,ibp,ic,rb,vebj,nsat1,mucinv1;
+        parameter real cgs=1e-13 from (0:inf);
+        parameter real cgd=1e-13 from (0:inf);
 
 	analog begin
             @(initial_step) begin
@@ -25,17 +29,21 @@ module branches(anode, gate, cathode, nsat);
                 qcgs = cgs*vgs;
                 icdg = cgd*V(dvdgdt);
 
+		I(anode, emitter) <+ vae/rb+I(gate_cathode);
 		I(gate_cathode) <+ ddt(qcgs);
 		I(drain, gate) <+ icdg;
-		I(drain_cathode) <+ imos + imult + ddt(qcdsj);
+		I(drain_cathode1) <+ imos + imult + cgs*ddt(qcdsj);
 		I(emitter, cathode) <+ ic;
 		I(emitter, drain) <+ ibp + ddt(V(qceb));
-		I(anode, emitter) <+ vae/rb;
+		//I(emitter, drain) <+ ddt(ibp*icdg + V(qceb));
 
-		V(dvdgdt) <+ ddt(vdg);
-		V(dvbcdt) <+ ddt(vds);
+		V(dvdgdt,emitter) <+ ddt(vdg);
+		V(dvbcdt) <+ ved+ddt(vds);
+		//V(dvbcdt) <+ ddt(vds);
+		//V(qceb) <+ vebj - ved;
 		V(qceb) <+ V(qceb) - vebj + ved;
-		V(nsat) <+ nsat1;
+		V(nsat,mucinv) <+ nsat1/(I(drain_cathode1));
+		//V(nsat,mucinv) <+ nsat1/ddt(I(drain_cathode1));
 		V(mucinv) <+ mucinv1;
 	end
 

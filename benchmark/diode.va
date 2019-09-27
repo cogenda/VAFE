@@ -18,10 +18,11 @@ module diode(a,c);
    `endif
    analog function real spicepnjlim;
        input vin, vold, vtemp, vcrit, j,k;
-       real vin, vold, vtemp, vcrit, arg, vnew;
-       integer j,k,l;
+       real vin, vold, vtemp, vcrit, arg, vnew, varr[1:10];
+       integer j,k,l,ivar[0:5];
        begin
            vnew = vin;
+           //if ((vnew > vcrit) || (abs(vnew-vold) > (vtemp+vtemp))) begin
            if ((vnew > vcrit) && (abs(vnew-vold) > (vtemp+vtemp))) begin
                 if (vold > 0) begin
                     arg = 1 + (vnew-vold) / vtemp;
@@ -41,12 +42,12 @@ module diode(a,c);
        end
    endfunction
    real vdio, idio, qdio;
-   integer j, count, rand, total;
+   integer j, count, rand, total,i;
    analog begin
        vdio = $limit(V(a,c), spicepnjlim, $vt, vcrit);
 //       vdio = V(a,c);
        idio = IS * (`mylimexp(vdio/$vt) - 1)*ln(vdio);
-       I(a,c) <+ idio;
+       v(a,c) <+ vdio+0.001;
        if (vdio < 0.5) begin
            qdio = 0.5 * CJO * (1-sqrt(1-vdio));
            idio = 1.2e-9*ln(qdio*3.499);

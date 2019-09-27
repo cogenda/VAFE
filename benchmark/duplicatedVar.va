@@ -1,0 +1,26 @@
+/*
+ * duplicatedVar.va to test duplicated defined module level variables 
+ */
+
+`include "discipline.h"
+
+`define BSIM4RdsEndIso(Weffcj)\
+            $strobe("Warning: (instance %M) Specified RGEO=%e not matched (BSIM4RdsEndIso type !=1)\n"\
+                ,rgeo);\
+            $strobe("Weffcj=",Weffcj);
+
+module duplicatedVar(p, n);
+  inout p, n;
+  electrical p, n;
+  
+  parameter real r = 100.0;
+  real gEff,gEff;
+
+  analog begin
+    gEff = 1.0 / r;
+    $strobe("analysis(noise)", analysis("noise"));
+
+    `BSIM4RdsEndIso(gEff)
+    I(p, n) <+ gEff * V(p, n);
+  end
+endmodule

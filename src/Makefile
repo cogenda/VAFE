@@ -3,7 +3,8 @@
 #make [DEBUG=0|1] [release] //build binary EXE
 #make test gengold=1  //To generate golden
 #make test [verbose=1]//To run the test [print details]
-
+#make test testacc [N=4] //To run test accuracy with N-cpu
+#export PATH:=/appmt/hspice_J-2014.09-SP2-1/hspice/GNU/rhel/gcc-4.7.2/bin:$(PATH)
 CC := gcc
 CXX := g++
 CFLAGS   := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
@@ -11,8 +12,10 @@ CXXFLAGS := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c
 LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
-EXE:=xyce_vams
-VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va contrib.va macro.va vco.va branches.va
+EXE:=../src/xyce_vams.exe
+VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va \
+	 contrib.va macro.va vco.va branches.va duplicatedVar.va \
+	 nodecollaprev.va testdFdx.va
 DEBUG ?= 1
 ifeq ($(DEBUG),1)
     CFLAGS += -DDEBUG -ggdb
@@ -54,28 +57,31 @@ vams_parse.c : vams_keyword_lookup.h
 	@echo "COMPILE C++: $@"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
+testacc:
+	cd ../benchmark/accchk/ && make -j$(N)
+
 test : $(EXE) 
-	@failed=0 && cd ../benchmark && ln -sf ../src/$(EXE) . && \
+	@failed=0 && cd ../benchmark/ &&  \
 	for vaf in $(VAfiles); do \
 	  vafb=`basename $$vaf .va` && \
 	  if [ -n "$(gengold)" ]; then\
-	    ./$(EXE) $$vaf > ref_$$vafb.log; \
-	    mv N_DEV_COGENDA_$$vafb.h ref_N_DEV_COGENDA_$$vafb.h; \
-	    mv N_DEV_COGENDA_$$vafb.C ref_N_DEV_COGENDA_$$vafb.C; \
+	    $(EXE) $$vaf > ref_$$vafb.log; \
+	    mv $$vafb.h ref_N_DEV_COGENDA_$$vafb.h; \
+	    mv $$vafb.C ref_N_DEV_COGENDA_$$vafb.C; \
 	  else \
-	    ./$(EXE) $$vaf > tag_$$vafb.log; \
+	    $(EXE) $$vaf > tag_$$vafb.log; \
 	    ret_diff1=`diff ref_$$vafb.log tag_$$vafb.log`; \
-	    ret_diff2=`diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h`; \
-	    ret_diff3=`diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C`; \
+	    ret_diff2=`diff ref_N_DEV_COGENDA_$$vafb.h $$vafb.h`; \
+	    ret_diff3=`diff ref_N_DEV_COGENDA_$$vafb.C $$vafb.C`; \
 	    if [ -n "$$ret_diff1" -o -n "$$ret_diff2" -o -n "$$ret_diff3" ]; then \
 	      failed=1 && echo "$$vaf failed."; \
 	      if [ -n "$(verbose)" ]; then \
 		diff ref_$$vafb.log tag_$$vafb.log; \
-		diff ref_N_DEV_COGENDA_$$vafb.h N_DEV_COGENDA_$$vafb.h; \
-		diff ref_N_DEV_COGENDA_$$vafb.C N_DEV_COGENDA_$$vafb.C; \
+		diff ref_N_DEV_COGENDA_$$vafb.h $$vafb.h; \
+		diff ref_N_DEV_COGENDA_$$vafb.C $$vafb.C; \
 	      fi \
 	    else \
-	      rm tag_$$vafb.log N_DEV_COGENDA_$$vafb.*; \
+	      rm tag_$$vafb.log; \
 	    fi \
 	  fi \
 	done && \

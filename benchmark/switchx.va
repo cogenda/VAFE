@@ -1,0 +1,20 @@
+//Test case tests dynamic contrib with condition 
+`include "disciplines.h"
+
+module switchx (p, n, c);
+  inout p, n, c;
+  electrical p, n, c;
+
+  parameter real vth = 0.7;
+  parameter real r = 1000;
+
+  integer on;
+
+  analog begin
+    on = V(c) > vth ?  1 : 0;
+    if (on)
+      V(p, n) <+ I(p, n) * r;
+    else
+      I(p, n) <+ 0;
+  end
+endmodule

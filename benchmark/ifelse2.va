@@ -1,0 +1,41 @@
+//Test item:if-else block 
+module ifelse2(a,c);
+   electrical a, c;
+   inout a, c;
+   parameter real IS = 1.0e-14;
+   parameter real CJO = +9.999E-12;
+   real vdio, idio, qdio,vnew;
+   analog begin
+       qdio=pow(vdio,eww/4.5);
+       qdio=ln(3.4*(6.7-(7.5/3.0)));
+       if (vdio < 0.5) begin
+           if(vnew>0)
+              qdio = 0.5 * CJO * (1-sqrt(1-vdio));
+           else
+              qdio = -0.5 * CJO * (1-sqrt(vdio-0.6));
+       end 
+       else if (vdio < 1.0) begin
+       //    if(vnew>0)
+              qdio = 1.0 * CJO * (1-sqrt(vdio-0.6));
+       //    else
+       //       qdio = -1.0 * CJO * (1-sqrt(vdio-0.6));
+       end 
+       else if (vdio > 1.2) begin
+           if(vnew>0)
+              qdio = 1.5 * CJO * (1-sqrt(vdio-0.6));
+           else
+              qdio = -1.5 * CJO * (1-sqrt(vdio-0.6));              
+       end 
+       else begin
+           if(qdio > 3e-15) begin
+            qdio = CJO * (2.0*(1.0-sqrt(0.5)) + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+           end
+           else begin
+            xix = Ic0/I00;
+            qdio = CJO * xix;
+           end
+       end
+   end
+endmodule
+
+

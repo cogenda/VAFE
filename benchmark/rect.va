@@ -1,0 +1,25 @@
+// Revised from va001cap.va to include a little bit of everything that raptor
+// supports.
+//`include "disciplines.h"
+
+module rect(acp, acn, dcp, dcn);
+inout acp, acn, dcp, dcn;
+electrical acp, acn, dcp, dcn, dcpp;
+parameter real I0 = 1e-6;
+parameter real vth = 0.0257;
+parameter real c = 1p;
+parameter real r = 100;
+analog begin
+// The four diode configuration
+  I(acp,dcpp) <+ I0 * (exp(V(acp,dcpp)/vth) - 1.0);
+  I(acn,dcpp) <+ I0 * (exp(V(acn,dcpp)/vth) - 1.0);
+  I(dcn,acp) <+ I0 * (exp(V(dcn,acp)/vth) - 1.0);
+  I(dcn,acn) <+ I0 * (exp(V(dcn,acn)/vth) - 1.0);
+
+// Add a PI filter
+  I(dcpp,dcp) <+ V(dcpp,dcp) / r;
+  I(dcpp,dcn) <+ c * ddt(V(dcpp,dcn));
+  I(dcp,dcn)  <+ c * ddt(V(dcp,dcn));
+end
+endmodule
+

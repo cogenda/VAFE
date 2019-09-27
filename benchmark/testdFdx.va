@@ -1,0 +1,16 @@
+//Test item:contribution stmt 
+`include "disciplines.h"
+
+module testdFdx(a, b);
+	inout a, b;
+	electrical qceb,emitter, drain;
+       
+        real ved;
+	analog begin
+              ved = V(emitter, drain);
+	      V(qceb) <+ V(qceb) + ved;
+	end
+
+endmodule
+
+

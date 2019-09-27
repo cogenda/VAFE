@@ -1,0 +1,7 @@
+Error array variable: realVars[0:12] not supported yet!
+Warn:dT not insert into depend map!
+Error Analog Filter Function Call:`IDTMOD' not supported yet!
+Error Not supported system function: `$bound_step'
+Error Not supported event expression:
+`@(cross(phase + 3.14159265358979323846/2, +1, ttol) or cross(phase - 3.14159265358979323846/2, +1, ttol))'
+Error Analog Filter Function Call:`TRANSITION' not supported yet!

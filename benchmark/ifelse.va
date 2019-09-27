@@ -1,36 +1,45 @@
 //Test item:if-else block 
+`include "disciplines.vams"
+
 module ifelse(a,c);
-   electrical a, c;
    inout a, c;
+   electrical a, c, b;
    parameter real IS = 1.0e-14;
    parameter real CJO = +9.999E-12;
-   real vdio, idio, qdio,vnew;
+   real vdio, idio, qdio,vnew,r1,eww,vold,vtemp,arg,vcrit;
    analog begin
        //vdio = $limit(V(a,c), $vt, vcrit);
        //idio = IS * (vdio/$vt - 1)*ln(vdio);
        //I(a,c) <+ idio;
+       r1=10;
+       eww=2.0;
        qdio=pow(vdio,eww/4.5);
        qdio=ln(3.4*(6.7-(7.5/3.0)));
        if (vdio < 0.5) begin
            qdio = 0.5 * CJO * (1-sqrt(1-vdio));
-           //if (vold >0) begin
-           //   arg = 1 + (vnew-vold) / vtemp;
-           //   if(arg >0)
-           //     vnew = vold + vtemp * ln(arg);
-           //   else
-           //     vnew = vcrit;
-           //end else begin
-           //   vnew = vtemp * ln(vnew/vtemp);              
-           //end
+           if (vold >0) begin
+              arg = 1 + (vnew-vold) / vtemp;
+              V(a,b) <+ I(a,c)*r1;
+              if(arg >0) begin
+                vnew = vold + vtemp * ln(arg);
+                V(a,b) <+ I(a,b)*r1;
+              end
+              else
+                vnew = vcrit;
+           end else begin
+              vnew = vtemp * ln(vnew/vtemp);              
+           end
+           V(a,c) <+ I(a,c)/r1;
+           V(a) <+ r1*2.0;
        end else if (vdio > 1.2) begin
            qdio = 1.5 * CJO * (1-sqrt(vdio-0.6));
+           I(a,c) <+ ddt(qdio)+V(a,c)/r1;
        end else begin
            qdio = CJO * (2.0*(1.0-sqrt(0.5)) + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
            //qdio = CJO * (2.0*(1.0-sqrt(0.5))
            //             + sqrt(2.0)/2.0*(vdio*vdio+vdio-3.0/4.0));
+           I(a,c) <+ ddt(qdio)+V(a,c)/r1;
        end
-
-       //I(a,c) <+ ddt(qdio);
    end
 endmodule
 

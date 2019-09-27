@@ -1,0 +1,53 @@
+`include "discipline.h"
+`include "constants.h"
+
+module res_va(p,n);
+inout p,n;
+electrical p,n;
+
+parameter real rend=1;
+parameter real rs=1;
+parameter real dw=1;
+parameter real vcr1=1;
+parameter real vcr2=1;
+parameter real tc1=1;
+parameter real tc2=1;
+parameter real res_type=1;
+parameter real l=1;
+parameter real w=1;
+parameter real temper=25;
+
+
+
+
+real res,tcoef,vl,i,v,power;
+
+analog begin
+
+
+tcoef=1.0+(tc1*(temper-25))+(tc2 *(temper-25)*(temper-25)); 
+
+
+
+
+ 
+if (res_type==1) begin//*****FOR DIFFUSION TYPE RESISTOR 
+res=((2*rend/(w+dw))+(rs*l/(w+dw)))*(1.0+vcr1*abs(V(p, n))+vcr2*pow(abs(V(p, n)),2))*tcoef;
+end 
+
+if (res_type==2) begin//*****FOR POLY TYPE RESISTOR 
+res=((2*rend/(w+dw))+(rs*l/(w+dw)))*(1.0+tanh(vcr1*abs(V(p, n))/l+vcr2*pow(abs(V(p, n))/l,2)-0.1)-tanh(-0.1))*tcoef;
+end 
+
+
+//$strobe(r);
+
+I(p, n) <+ V(p, n)/res;
+
+v=V(p,n);
+i=v/res;
+power=i*v;
+
+end
+
+endmodule
