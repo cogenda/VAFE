@@ -1124,15 +1124,18 @@ resolve_block_contrib(vpiHandle obj, string_t& retStr, vaElement& vaSpecialItems
   bool hasSmallSignalFunc = false;
   string_t condition_collapse ="";
   int rhs_obj_type = (int) vpi_get (vpiType, objRhs);
-  if(rhs_obj_type == vpiConstant && ::atoi(_strRhs.c_str()) == 0) {
-    hasCollapsedNode = true;
-    strPair *thisPair = &(vaSpecialItems.m_condCollapedContribs);
-    assert(::atoi(thisPair->second.c_str()) <= lineNo);
-    condition_collapse = thisPair->first;
-    _strRhs = COLLAPSECONTRIB_TAG;
-  }
-  else if(_strType == va_electrical_type_map[VA_Potential])
+  if(_strType == va_electrical_type_map[VA_Potential])
+  {
     _etype = VA_Potential;
+    //collapsed nodes should be Voltage contrib (V(a,b)<+0)
+    if(rhs_obj_type == vpiConstant && ::atoi(_strRhs.c_str()) == 0) {
+      hasCollapsedNode = true;
+      strPair *thisPair = &(vaSpecialItems.m_condCollapedContribs);
+      assert(::atoi(thisPair->second.c_str()) <= lineNo);
+      condition_collapse = thisPair->first;
+      _strRhs = COLLAPSECONTRIB_TAG;
+    }
+  }
   else if(_strType == va_electrical_type_map[VA_Flow])
     _etype = VA_Flow;
   else
