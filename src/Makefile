@@ -15,7 +15,8 @@ WGET := wget -T 30 -t 0 -c
 EXE:=../src/xyce_vams.exe
 VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va \
 	 contrib.va macro.va vco.va branches.va duplicatedVar.va \
-	 nodecollaprev.va testdFdx.va
+	 nodecollaprev.va testdFdx.va res_va.va rect.va switchx.va \
+	 bsim3_va.va bsim4_body.va bsim4_va.va
 DEBUG ?= 1
 ifeq ($(DEBUG),1)
     CFLAGS += -DDEBUG -ggdb
@@ -81,7 +82,7 @@ test : $(EXE)
 		diff ref_N_DEV_COGENDA_$$vafb.C $$vafb.C; \
 	      fi \
 	    else \
-	      rm tag_$$vafb.log; \
+	      rm tag_$$vafb.log $$vafb.C $$vafb.h; \
 	    fi \
 	  fi \
 	done && \
