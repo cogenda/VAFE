@@ -152,7 +152,7 @@ module bsim3_va(d, g, s, b);
     parameter real dwg=0; // Gate-bias dependence of channel width [m/v]
     parameter real dwb=0; // Body-bias dependence of channel width
     parameter real tox=150.0e-10; // Gate oxide thickness [m]
-    parameter real toxm=150.0e-10; // Tox at which parameters were extracted [m]
+    parameter real toxm=tox; // Tox at which parameters were extracted [m]
     parameter real xt=`NOT_GIVEN; // 1.55e-7; // Doping depth [m]
     parameter real rdsw=0; // Width dependence of drain-source resistance [Ohm mm]
     parameter real prwb=0; // Body-effectcoeff for Rds
@@ -193,7 +193,7 @@ module bsim3_va(d, g, s, b);
     parameter real nfactor=1; // Subthreshold swing coeff
     parameter real cit=0; // Interface trap parameter for subthreshold swing [F]
     parameter real voff=-0.08; // Threshold voltage offset [V]
-    parameter real dsub=0.56; // DIBL effectin subthreshold region
+    parameter real dsub=drout; // DIBL effectin subthreshold region
     parameter real eta0=0.08; // DIBL coeff subthreshold region
     parameter real etab=-0.07; // Body-bias dependence of et0 [1/V]
     
@@ -254,16 +254,16 @@ module bsim3_va(d, g, s, b);
     parameter real mjsw=0.33; // Bulk junctionsidewall grading coeff
     parameter real pbsw=1; // Side-wall junctionbuilt-in potential [V]
     parameter real php=1; // Alias to pbsw when ACM=0-3
-    parameter real cjswg=5e-10; // Zero-bias gate-side junction cap density [F/m]
-    parameter real cjgate=5e-10; // Alias to cjswg when ACM=0-3
-    parameter real mjswg=0.33; // Gate-side junctiongrading coeff
-    parameter real pbswg=1; // Gate-side junctionbuilt-in potential [V]
+    parameter real cjswg=cjsw; // Zero-bias gate-side junction cap density [F/m]
+    parameter real cjgate=cjsw; // Alias to cjswg when ACM=0-3
+    parameter real mjswg=mjsw; // Gate-side junctiongrading coeff
+    parameter real pbswg=pbsw; // Gate-side junctionbuilt-in potential [V]
     parameter real fcsw=0.5; // Unused: Side-wall forward-bias depletion cap threshold
     
     // Charge Model SelectionParameters
     parameter integer capmod=3 from [0:3]; // Intrinsic charge model
     parameter integer nqsmod=0; // Non-quasi static model selector (0/1)
-    parameter real dwc=0; // Delta W for capacitance model [m]
+    parameter real dwc=wint; // Delta W for capacitance model [m]
     parameter real dlc=`NOT_GIVEN; // Delta L for capacitance model [m]
     parameter real clc=0.1e-6; // Intrinsic capacitance fitting parameter [m]
     parameter real cle=0.6; // Intrinsic capacitance fitting parameter
@@ -276,12 +276,12 @@ module bsim3_va(d, g, s, b);
     parameter real voffcv=0; // Transition parameter
     //parameter real part=0; // Unused: Drain/source channel charge partitioning
                            // Use 0.0 for 40/60, 0.5 for 50/50, or 1.0 for 0/100
-    parameter real llc=0; // Length dependence of delta L for CV [m]
-    parameter real lwc=0; // Width dependence of delta L for CV [m]
-    parameter real lwlc=0; // Area dependence of delta L for CV [m2]
-    parameter real wlc=0; // Length dependence of delta W for CV [m]
-    parameter real wwc=0; // Width dependence of delta W for CV [m]
-    parameter real wwlc=0; // Area dependence of delta W for CV [m2]
+    parameter real llc=ll; // Length dependence of delta L for CV [m]
+    parameter real lwc=lw; // Width dependence of delta L for CV [m]
+    parameter real lwlc=lwl; // Area dependence of delta L for CV [m2]
+    parameter real wlc=wl; // Length dependence of delta W for CV [m]
+    parameter real wwc=ww; // Width dependence of delta W for CV [m]
+    parameter real wwlc=wwl; // Area dependence of delta W for CV [m2]
     
     parameter real tnom=`DEFAULT_TNOM; // Parameter measurement temperature [C]
     parameter real trise=0; // Unused: Temperature rise from ambient [C]
@@ -793,22 +793,19 @@ module bsim3_va(d, g, s, b);
     //New model for breakdown diode model
     parameter integer breakmod = 0;
     parameter real bvs = 10.0;
-    parameter real bvd = 10.0;
-    //parameter real bvd = bvs;
+    parameter real bvd = bvs;
     parameter real ijthsrev = 0.1;
-    parameter real ijthdrev = 0.1;
-    //parameter real ijthdrev = ijthsrev;
+    parameter real ijthdrev = ijthsrev;
     parameter real xjbvs = 1.0;
-    parameter real xjbvd = 1.0;
-    //parameter real xjbvd = xjbvs;
+    parameter real xjbvd = xjbvs;
     //New model for stimod (stress model) 
     parameter integer stimod = 0 from [0:2];
     parameter real sa=`NOT_GIVEN; //built-in BSIM4 STI model
     parameter real saref=`NOT_GIVEN; //built-in BSIM4 STI model,default 1u
-    parameter real sa0=`NOT_GIVEN;  //alias to saref
+    parameter real sa0=saref;  //alias to saref
     parameter real sb=`NOT_GIVEN;
     parameter real sbref=`NOT_GIVEN; //built-in BSIM4 STI model,default 1u
-    parameter real sb0=`NOT_GIVEN;  //alias to sbref
+    parameter real sb0=sbref;  //alias to sbref
     parameter real sd=0.0;
     parameter real nf=1.0;
     parameter real sa1 = `NOT_GIVEN;		//Enh new params version 3.3
@@ -3026,16 +3023,15 @@ module bsim3_va(d, g, s, b);
             $strobe("\nFatal: Effective channel length-CV %g <= 0",BSIM3leffCV);
         if(BSIM3weffCV <= 0.0)
             $strobe("\nFatal: Effective channel width-CV %g <= 0",BSIM3weffCV);
-        if(BSIM3acm < 3.1 || (BSIM3calcacm > 0 && (BSIM3acm < 12.1 && BSIM3acm > 11.9))) 
+        if(!(BSIM3acm < 3.1 || (BSIM3calcacm > 0 && (BSIM3acm < 12.1 && BSIM3acm > 11.9)))) 
         //use the previous calculated values from ACM
-          ; 
-        else begin
+         begin
         //use the orignal values from instance line
           BSIM3sourceArea = as ;
           BSIM3drainArea = ad ;
           BSIM3sourcePerimeter = ps ;
           BSIM3drainPerimeter = pd ;
-        end
+         end
 
         if(BSIM3sourceArea < 0.0)
             BSIM3sourceArea = 0.0;
