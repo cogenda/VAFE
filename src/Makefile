@@ -7,12 +7,12 @@
 #export PATH:=/appmt/hspice_J-2014.09-SP2-1/hspice/GNU/rhel/gcc-4.7.2/bin:$(PATH)
 CC := gcc
 CXX := g++
-CFLAGS   := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
-CXXFLAGS := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c++11
-LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
+CFLAGS   := -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC
+CXXFLAGS := -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c++11
+LDFLAGS  := -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
-EXE:=../src/xyce_vams.exe
+EXE:=../src/xyce_vams
 VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va \
 	 contrib.va macro.va vco.va branches.va duplicatedVar.va \
 	 nodecollaprev.va testdFdx.va res_va.va rect.va switchx.va \
@@ -33,7 +33,7 @@ release: $(EXE)
 
 $(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o  xyce_vacomp.o xyce_cxxgen.o ../3rdparty/lib/libdparse.a
 	@echo "LINK: $@"
-	@$(CXX) $(LDFLAGS) -o $@ $^
+	$(CXX)  -o $@ $^ $(LDFLAGS)
 
 # Do not remove generated sources automatically in each build.
 .SECONDARY : $($(wildcard *.l):.l=.c) $($(wildcard *.g):.g=.c) $($(wildcard *.gperf):.gperf=.h)  $($(wildcard *.gperf):.gperf=.c)
