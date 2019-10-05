@@ -510,7 +510,7 @@ static int def_eval (struct scanner_extra *e, char *defstring, char **endp)
 		}
 		wb_write(&wb, "\0", 1);
 		s = wb.buf;
-		while (s && *s != '\0') {
+		while (s && s[0] != '\0') {
 			char *s1 = strchr(s, '`');
 			if (!s1 || *s1 == '\0') {
 				emit(e, s);
