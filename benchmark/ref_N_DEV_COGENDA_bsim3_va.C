@@ -5532,9 +5532,7 @@ bool Instance::updateIntermediateVars()
   if((BSIM3weffCV <= 0.0)) {
     printf("\nFatal: Effective channel width-CV %g <= 0",((BSIM3weffCV)*UNITFAD).val());
   }
-  if(((BSIM3acm < 3.1) || ((BSIM3calcacm > 0) && ((BSIM3acm < 12.1) && (BSIM3acm > 11.9))))) {
-  }
-  else {
+  if(!((BSIM3acm < 3.1) || ((BSIM3calcacm > 0) && ((BSIM3acm < 12.1) && (BSIM3acm > 11.9))))) {
     {
       BSIM3sourceArea = ((this->as)*UNITFAD).val();
       BSIM3drainArea = ((this->ad)*UNITFAD).val();
