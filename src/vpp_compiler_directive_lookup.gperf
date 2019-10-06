@@ -1,0 +1,28 @@
+%language=C
+%readonly-tables
+%define hash-function-name compiler_directive_hash
+%define lookup-function-name compiler_directive_lookup
+%compare-strncmp
+%%
+begin_keywords
+celldefine
+default_discipline
+default_nettype
+default_transition
+define
+else
+elsif
+end_keywords
+endcelldefine
+endif
+ifdef
+ifndef
+include
+line
+nounconnected_drive
+pragma
+resetall
+timescale
+unconnected_drive
+undef
+%%

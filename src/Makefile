@@ -38,13 +38,19 @@ $(EXE) : main.o vams_parse.o vpp.o xvpi.o xvpi_elaborate.o vpi_user.o dump-vpi.o
 # Do not remove generated sources automatically in each build.
 .SECONDARY : $($(wildcard *.l):.l=.c) $($(wildcard *.g):.g=.c) $($(wildcard *.gperf):.gperf=.h)  $($(wildcard *.gperf):.gperf=.c)
 
-vpp.c : vpp_compiler_directive_lookup.h
-
-vams_parse.c : vams_keyword_lookup.h
-
-%.c : %.l 
+vams_keyword_lookup.h: vams_keyword_lookup.gperf
 	@echo "GENERATE: $@"
-	@flex -o$@ $<
+	@gperf  $< > $@
+
+vpp_compiler_directive_lookup.h: vpp_compiler_directive_lookup.gperf
+	@echo "GENERATE: $@"
+	@gperf  $< > $@
+
+vams_parse.c : vams_parse.g vams_keyword_lookup.h
+
+vpp.c : vpp.l vpp_compiler_directive_lookup.h
+	@echo "GENERATE: $@"
+	@flex -o $@ $<
 
 %.c : %.g ../3rdparty/bin/make_dparser
 	@echo "GENERATE: $@"
@@ -108,7 +114,7 @@ distclean : realclean
 realclean : clean
 	@echo "REMOVE: generated sources."
 	-@rm -f vpp.c
-	-@rm -f vams_keyword_lookup.h
+	-@rm -f vams_keyword_lookup.h vpp_compiler_directive_lookup
 	-@rm -f vams_parse.c
 
 clean :
