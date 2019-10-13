@@ -12,7 +12,7 @@ CXXFLAGS := -MD -Wall -I../3rdparty/include -I. -D__XVPI__ -pthread -fPIC -std=c
 LDFLAGS  := -MD -Wall -ldl -lm -lpthread -fPIC
 PATH := $(PWD)/../3rdparty/bin:$(PATH)
 WGET := wget -T 30 -t 0 -c
-EXE:=../src/xyce_vams.exe
+EXE:=../src/xyce_vams
 VAfiles:=switchcase.va diode.va ifelse.va ifelse2.va operats.va xor2.va \
 	 contrib.va macro.va vco.va branches.va duplicatedVar.va \
 	 nodecollaprev.va testdFdx.va res_va.va rect.va switchx.va \
