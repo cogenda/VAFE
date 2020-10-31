@@ -811,7 +811,7 @@ void genStampGCStuff(vaElement& vaModuleEntries, std::ofstream& h_outCxx, string
   flagDict rhsUnit={"no",""};
   string_t ptrKey, nlhsA, nlhsB, sign, nrhsA, nrhsB, tmpStr;
   bool hasDependNodes = true;
-  strPairStrVecDict gStaticMatrix, cStaticMatrix, *pStaticMatrix;
+  strPairStrVecDict gStaticMatrix, cStaticMatrix, *pStaticMatrix=NULL;
   for(auto it=vaModuleEntries.m_contribs.begin(); 
     it != vaModuleEntries.m_contribs.end(); ++it)
   {
