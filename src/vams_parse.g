@@ -240,7 +240,7 @@
 			loc->s++;
 		}
 		loc->line = next_line;
-		loc->previous_col = loc->col = strtol(loc->s, &loc->s, 10);
+		loc->col = strtol(loc->s, &loc->s, 10);
 		while (loc->s[0] != '\0' && loc->s[0] != '\n')
 			loc->s++;
 		if (loc->s[0] == '\n')
